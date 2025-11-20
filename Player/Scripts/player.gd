@@ -1,0 +1,1 @@
+class_name Playes extends CharacterBody2D
