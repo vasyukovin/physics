@@ -16,10 +16,10 @@ position = Vector2(581, 341)
 [node name="UI" type="Control" parent="."]
 layout_mode = 3
 anchors_preset = 0
-offset_left = 570.0
-offset_top = 476.0
-offset_right = 605.0
-offset_bottom = 526.0
+offset_left = 781.0
+offset_top = 387.0
+offset_right = 816.0
+offset_bottom = 437.0
 
 [node name="ForceInput" type="LineEdit" parent="UI"]
 layout_mode = 0
@@ -36,3 +36,7 @@ offset_top = -25.0
 offset_right = 47.0
 offset_bottom = 6.0
 text = "Throw"
+
+[node name="Camera2D" type="Camera2D" parent="."]
+position = Vector2(587, 247)
+zoom = Vector2(2, 2)
