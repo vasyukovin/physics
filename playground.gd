@@ -22,8 +22,7 @@ func _ready():
 	
 	throw_button.pressed.connect(_on_throw_button_pressed)
 	
-	force_input.text = "1000"
-	force_input.placeholder_text = "Enter force (e.g., 500)"
+	force_input.text = "700"
 	
 func _physics_process(_delta):
 	if ball_is_thrown and not ball.freeze:
