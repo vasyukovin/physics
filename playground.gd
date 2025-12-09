@@ -6,6 +6,7 @@ extends Node2D
 @onready var player_sprite: Sprite2D = $Player/Sprite2D
 @onready var height_line: Line2D = $HeightIndicator
 @onready var height_label: Label = $HeightLabel
+@onready var target_height_line: Line2D = $TargetHeightLine
 
 @export var hand_y_offset: float = 380.0
 @export var pixels_per_meter: float = 100.0  # Conversion factor: 100 pixels = 1 meter
@@ -39,6 +40,20 @@ func _ready():
 		height_label.visible = false
 		height_label.add_theme_color_override("font_color", Color.RED)
 		height_label.add_theme_font_size_override("font_size", 24)
+	
+	# Initialize static target height line above player
+	if target_height_line:
+		target_height_line.width = 3.0
+		target_height_line.default_color = Color(0.6, 0.4, 0.2)  # Brown color
+		target_height_line.visible = true
+		
+		# Create a static horizontal line above the player
+		var line_length: float = 2000.0
+		var line_y: float = starting_ball_y - 250.0  # Fixed Y position above player
+		
+		target_height_line.clear_points()
+		target_height_line.add_point(Vector2(-line_length, line_y))
+		target_height_line.add_point(Vector2(line_length, line_y))
 	
 func _physics_process(_delta):
 	if ball_is_thrown and not ball.freeze:
@@ -112,7 +127,8 @@ func _update_height_indicator():
 	var height_pixels = reference_y - ball_center.y
 	
 	# Convert to meters
-	var height_meters = height_pixels / pixels_per_meter
+	# var height_meters = height_pixels / pixels_per_meter
+	var height_meters = height_pixels
 	
 	# Only show if ball is above reference point
 	if height_meters > 0:

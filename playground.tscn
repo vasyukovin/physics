@@ -50,3 +50,6 @@ offset_top = 321.0
 offset_right = 700.0
 offset_bottom = 345.0
 text = "0.00 m"
+
+[node name="TargetHeightLine" type="Line2D" parent="."]
+points = PackedVector2Array(0, 2)
