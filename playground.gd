@@ -49,7 +49,7 @@ func _ready():
 		
 		# Create a static horizontal line above the player
 		var line_length: float = 2000.0
-		var line_y: float = starting_ball_y - 250.0  # Fixed Y position above player
+		var line_y: float = starting_ball_y - 232.69947052002  # Fixed Y position above player
 		
 		target_height_line.clear_points()
 		target_height_line.add_point(Vector2(-line_length, line_y))
@@ -58,11 +58,11 @@ func _ready():
 func _physics_process(_delta):
 	if ball_is_thrown and not ball.freeze:
 		var current_y = ball.global_position.y
-		
+
 		# Track maximum height (lowest Y value = highest up)
 		if current_y < max_ball_height:
 			max_ball_height = current_y
-		
+
 		# Update height indicator
 		_update_height_indicator()
 		
@@ -153,6 +153,7 @@ func _update_height_indicator():
 			height_label.text = "%.2f m" % height_meters  # Format: "X.XX m"
 			# Position label at the top of the line (at ball's current height)
 			height_label.position = to_local(Vector2(ball_center.x + line_x_offset + 10, ball_center.y - 20))
+			# print("Height label position: ", height_meters)
 	else:
 		if height_line:
 			height_line.visible = false
