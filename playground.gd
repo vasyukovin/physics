@@ -7,10 +7,13 @@ extends Node2D
 @onready var height_line: Line2D = $HeightIndicator
 @onready var height_label: Label = $HeightLabel
 @onready var target_height_line: Line2D = $TargetHeightLine
+@onready var camera: Camera2D = $Camera2D
 
 @export var hand_y_offset: float = 380.0
 @export var pixels_per_meter: float = 100.0  # Conversion factor: 100 pixels = 1 meter
 @export var line_x_offset: float = 50.0  # Distance from ball to line
+@export var shake_intensity: float = 15.0  # How strong the shake is
+@export var shake_duration: float = 2  # How long the shake lasts (in seconds)
 
 var default_ball_position: Vector2 
 var hand_position_y: float
@@ -20,6 +23,9 @@ var starting_ball_y: float
 var target_line_y: float  # Y position of the target line
 var previous_velocity_y: float = 0.0  # Previous frame's vertical velocity
 var triggers_fired: Dictionary = {}  # Track which triggers have fired this throw
+var camera_original_offset: Vector2 = Vector2.ZERO  # Store original camera offset
+var shake_timer: float = 0.0  # Timer for shake duration
+var is_shaking: bool = false  # Whether camera is currently shaking
 
 func _ready():
 	default_ball_position = ball.global_position
@@ -58,7 +64,15 @@ func _ready():
 		target_height_line.add_point(Vector2(-line_length, target_line_y))
 		target_height_line.add_point(Vector2(line_length, target_line_y))
 	
+	# Store original camera offset
+	if camera:
+		camera_original_offset = camera.offset
+	
 func _physics_process(_delta):
+	# Update camera shake
+	if is_shaking:
+		_update_camera_shake(_delta)
+	
 	if ball_is_thrown and not ball.freeze:
 		var current_y = ball.global_position.y
 		var current_velocity_y = ball.linear_velocity.y
@@ -212,9 +226,39 @@ func _check_peak_triggers(ball_center_y: float):
 		if not triggers_fired.get("above_line", false):
 			triggers_fired["above_line"] = true
 			print("ТРИГГЕР 2: Центр шара выше линии")
+			_start_camera_shake()  # Start earthquake effect
 	
 	# Trigger 3: Center of ball is on the line (within tolerance)
 	if distance_from_line <= tolerance:
 		if not triggers_fired.get("on_line", false):
 			triggers_fired["on_line"] = true
 			print("ТРИГГЕР 3: Центр шара идеально на линии (погрешность: %.2f пикселей)" % distance_from_line)
+
+func _start_camera_shake():
+	"""Start the camera shake effect (earthquake)"""
+	if camera:
+		is_shaking = true
+		shake_timer = shake_duration
+
+func _update_camera_shake(delta: float):
+	"""Update camera shake effect each frame"""
+	if not camera or not is_shaking:
+		return
+	
+	shake_timer -= delta
+	
+	if shake_timer <= 0.0:
+		# Shake is over, reset camera to original position
+		is_shaking = false
+		camera.offset = camera_original_offset
+	else:
+		# Calculate shake intensity (decreases over time)
+		var progress = shake_timer / shake_duration
+		var current_intensity = shake_intensity * progress
+		
+		# Apply random offset to camera
+		var random_offset = Vector2(
+			randf_range(-current_intensity, current_intensity),
+			randf_range(-current_intensity, current_intensity)
+		)
+		camera.offset = camera_original_offset + random_offset
