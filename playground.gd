@@ -17,6 +17,9 @@ var hand_position_y: float
 var ball_is_thrown: bool = false
 var max_ball_height: float = 0.0
 var starting_ball_y: float
+var target_line_y: float  # Y position of the target line
+var previous_velocity_y: float = 0.0  # Previous frame's vertical velocity
+var triggers_fired: Dictionary = {}  # Track which triggers have fired this throw
 
 func _ready():
 	default_ball_position = ball.global_position
@@ -49,19 +52,35 @@ func _ready():
 		
 		# Create a static horizontal line above the player
 		var line_length: float = 2000.0
-		var line_y: float = starting_ball_y - 232.69947052002  # Fixed Y position above player
+		target_line_y = starting_ball_y - 232.69947052002  # Fixed Y position above player
 		
 		target_height_line.clear_points()
-		target_height_line.add_point(Vector2(-line_length, line_y))
-		target_height_line.add_point(Vector2(line_length, line_y))
+		target_height_line.add_point(Vector2(-line_length, target_line_y))
+		target_height_line.add_point(Vector2(line_length, target_line_y))
 	
 func _physics_process(_delta):
 	if ball_is_thrown and not ball.freeze:
 		var current_y = ball.global_position.y
+		var current_velocity_y = ball.linear_velocity.y
 
 		# Track maximum height (lowest Y value = highest up)
 		if current_y < max_ball_height:
 			max_ball_height = current_y
+
+		# Detect peak: when velocity changes from negative (going up) to positive (going down)
+		# or when velocity is close to zero and was negative before
+		var is_at_peak = false
+		if previous_velocity_y < 0 and current_velocity_y >= 0:
+			is_at_peak = true
+		elif abs(current_velocity_y) < 5.0 and previous_velocity_y < 0:
+			is_at_peak = true
+		
+		# Check triggers at peak
+		if is_at_peak and not triggers_fired.get("peak_checked", false):
+			triggers_fired["peak_checked"] = true
+			_check_peak_triggers(current_y)
+		
+		previous_velocity_y = current_velocity_y
 
 		# Update height indicator
 		_update_height_indicator()
@@ -90,6 +109,8 @@ func _physics_process(_delta):
 			ball.global_position = default_ball_position
 			player_sprite.frame = 0  # Reset to frame 0
 			max_ball_height = 0.0
+			triggers_fired.clear()  # Reset triggers
+			previous_velocity_y = 0.0
 			if height_line:
 				height_line.visible = false
 			if height_label:
@@ -98,6 +119,8 @@ func _physics_process(_delta):
 func _on_throw_button_pressed():
 	max_ball_height = default_ball_position.y
 	player_sprite.frame = 0  # Start at frame 0
+	triggers_fired.clear()  # Reset triggers for new throw
+	previous_velocity_y = 0.0
 	
 	var force_value: float = 0.0
 	if force_input and force_input.text != "":
@@ -154,8 +177,44 @@ func _update_height_indicator():
 			# Position label at the top of the line (at ball's current height)
 			height_label.position = to_local(Vector2(ball_center.x + line_x_offset + 10, ball_center.y - 20))
 			# print("Height label position: ", height_meters)
-	else:
-		if height_line:
-			height_line.visible = false
-		if height_label:
-			height_label.visible = false
+		else:
+			if height_line:
+				height_line.visible = false
+			if height_label:
+				height_label.visible = false
+
+func _check_peak_triggers(ball_center_y: float):
+	# Get ball radius from collision shape
+	var ball_radius: float = 10.0  # Default fallback
+	if ball.has_node("CollisionShape2D"):
+		var collision_shape = ball.get_node("CollisionShape2D")
+		if collision_shape and collision_shape.shape is CircleShape2D:
+			ball_radius = collision_shape.shape.radius
+	
+	# Calculate highest point of ball (top of ball = center_y - radius)
+	var highest_point_y = ball_center_y - ball_radius
+	
+	# Tolerance for "perfectly on line"
+	var tolerance: float = 10.0
+	
+	# Calculate distance from center to line
+	var distance_from_line = abs(ball_center_y - target_line_y)
+	
+	# Trigger 1: Highest point is below the line
+	# (Y increases downward, so higher Y = lower position)
+	if highest_point_y > target_line_y:
+		if not triggers_fired.get("below_line", false):
+			triggers_fired["below_line"] = true
+			print("ТРИГГЕР 1: Высочайшая точка шара ниже линии")
+	
+	# Trigger 2: Center of ball is above the line
+	if ball_center_y < target_line_y:
+		if not triggers_fired.get("above_line", false):
+			triggers_fired["above_line"] = true
+			print("ТРИГГЕР 2: Центр шара выше линии")
+	
+	# Trigger 3: Center of ball is on the line (within tolerance)
+	if distance_from_line <= tolerance:
+		if not triggers_fired.get("on_line", false):
+			triggers_fired["on_line"] = true
+			print("ТРИГГЕР 3: Центр шара идеально на линии (погрешность: %.2f пикселей)" % distance_from_line)
