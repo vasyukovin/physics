@@ -40,3 +40,13 @@ text = "Throw"
 [node name="Camera2D" type="Camera2D" parent="."]
 position = Vector2(587, 247)
 zoom = Vector2(2, 2)
+
+[node name="HeightIndicator" type="Line2D" parent="."]
+points = PackedVector2Array(0, 2)
+
+[node name="HeightLabel" type="Label" parent="."]
+offset_left = 631.0
+offset_top = 321.0
+offset_right = 700.0
+offset_bottom = 345.0
+text = "0.00 m"
