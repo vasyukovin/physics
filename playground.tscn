@@ -39,7 +39,7 @@ text = "Throw"
 
 [node name="Camera2D" type="Camera2D" parent="."]
 position = Vector2(587, 247)
-zoom = Vector2(2, 2)
+zoom = Vector2(1.5, 1.5)
 
 [node name="HeightIndicator" type="Line2D" parent="."]
 points = PackedVector2Array(0, 2)
@@ -51,5 +51,4 @@ offset_right = 700.0
 offset_bottom = 345.0
 text = "0.00 m"
 
-[node name="TargetHeightLine" type="Line2D" parent="."]
-points = PackedVector2Array(0, 2)
+[node name="TargetHeightLine" type="Sprite2D" parent="."]

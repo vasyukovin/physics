@@ -6,7 +6,7 @@ extends Node2D
 @onready var player_sprite: Sprite2D = $Player/Sprite2D
 @onready var height_line: Line2D = $HeightIndicator
 @onready var height_label: Label = $HeightLabel
-@onready var target_height_line: Line2D = $TargetHeightLine
+@onready var target_height_line: Sprite2D = $TargetHeightLine
 @onready var camera: Camera2D = $Camera2D
 
 @export var hand_y_offset: float = 380.0
@@ -14,6 +14,12 @@ extends Node2D
 @export var line_x_offset: float = 50.0  # Distance from ball to line
 @export var shake_intensity: float = 15.0  # How strong the shake is
 @export var shake_duration: float = 2  # How long the shake lasts (in seconds)
+
+# Target ring (procedural circle indicator)
+@export var target_tolerance_px: float = 10.0  # Allowed center offset for a "hit"
+@export var target_ring_line_width_px: float = 3.0
+@export var target_ring_idle_alpha: float = 0.25
+@export var target_hit_color: Color = Color(0.2, 0.6, 1.0, 1.0)
 
 var default_ball_position: Vector2 
 var hand_position_y: float
@@ -26,6 +32,7 @@ var triggers_fired: Dictionary = {}  # Track which triggers have fired this thro
 var camera_original_offset: Vector2 = Vector2.ZERO  # Store original camera offset
 var shake_timer: float = 0.0  # Timer for shake duration
 var is_shaking: bool = false  # Whether camera is currently shaking
+var target_ring_radius_px: float = 0.0
 
 func _ready():
 	default_ball_position = ball.global_position
@@ -52,18 +59,26 @@ func _ready():
 	
 	# Initialize static target height line above player
 	if target_height_line:
-		target_height_line.width = 3.0
-		target_height_line.default_color = Color(0.6, 0.4, 0.2)  # Brown color
 		target_height_line.visible = true
 		
-		# Create a static horizontal line above the player
-		var line_length: float = 2000.0
+
 		target_line_y = starting_ball_y - 232.69947052002  # Fixed Y position above player
+
+		if player_sprite:
+			var player_x = player_sprite.global_position.x
+			target_height_line.global_position = Vector2(player_x, target_line_y)
 		
-		target_height_line.clear_points()
-		target_height_line.add_point(Vector2(-line_length, target_line_y))
-		target_height_line.add_point(Vector2(line_length, target_line_y))
-	
+		# Procedural ring: same size as ball + tolerance (for "forgiveness")
+		var ball_radius := _get_ball_radius_px()
+		target_ring_radius_px = ball_radius + target_tolerance_px
+		
+		target_height_line.texture = _make_ring_texture(target_ring_radius_px, target_ring_line_width_px)
+		target_height_line.centered = true
+		target_height_line.material = null
+		target_height_line.scale = Vector2.ONE
+		target_height_line.modulate = Color(1, 1, 1, target_ring_idle_alpha)
+		target_height_line.z_index = 10
+
 	# Store original camera offset
 	if camera:
 		camera_original_offset = camera.offset
@@ -208,12 +223,6 @@ func _check_peak_triggers(ball_center_y: float):
 	# Calculate highest point of ball (top of ball = center_y - radius)
 	var highest_point_y = ball_center_y - ball_radius
 	
-	# Tolerance for "perfectly on line"
-	var tolerance: float = 10.0
-	
-	# Calculate distance from center to line
-	var distance_from_line = abs(ball_center_y - target_line_y)
-	
 	# Trigger 1: Highest point is below the line
 	# (Y increases downward, so higher Y = lower position)
 	if highest_point_y > target_line_y:
@@ -228,11 +237,18 @@ func _check_peak_triggers(ball_center_y: float):
 			print("ТРИГГЕР 2: Центр шара выше линии")
 			_start_camera_shake()  # Start earthquake effect
 	
-	# Trigger 3: Center of ball is on the line (within tolerance)
-	if distance_from_line <= tolerance:
-		if not triggers_fired.get("on_line", false):
-			triggers_fired["on_line"] = true
-			print("ТРИГГЕР 3: Центр шара идеально на линии (погрешность: %.2f пикселей)" % distance_from_line)
+	# Trigger 3: "Hit" when ball center is close enough to target circle center (2D distance)
+	if target_height_line:
+		var ball_pos := ball.global_position
+		var target_pos := target_height_line.global_position
+		var dist := ball_pos.distance_to(target_pos)
+		
+		# Note: ring radius is ball_radius + tolerance; for a "hit" we check center offset <= tolerance
+		if dist <= target_tolerance_px:
+			if not triggers_fired.get("on_line", false):
+				triggers_fired["on_line"] = true
+				print("ТРИГГЕР 3: попадание в цель (dist=%.2f px)" % dist)
+				_play_target_hit_fx()
 
 func _start_camera_shake():
 	"""Start the camera shake effect (earthquake)"""
@@ -262,3 +278,84 @@ func _update_camera_shake(delta: float):
 			randf_range(-current_intensity, current_intensity)
 		)
 		camera.offset = camera_original_offset + random_offset
+
+func _get_ball_radius_px() -> float:
+	# 1) Prefer collision radius (physics-accurate)
+	if ball and ball.has_node("CollisionShape2D"):
+		var cs := ball.get_node("CollisionShape2D") as CollisionShape2D
+		if cs and cs.shape is CircleShape2D:
+			var r := (cs.shape as CircleShape2D).radius
+			if r > 0.0:
+				return r
+	
+	# 2) Fallback: estimate from sprite size * scale
+	if ball and ball.has_node("Sprite2D"):
+		var s := ball.get_node("Sprite2D") as Sprite2D
+		if s and s.texture:
+			var size := s.texture.get_size()
+			return 0.5 * size.x * s.scale.x
+	
+	return 10.0
+
+func _make_ring_texture(radius_px: float, line_width_px: float) -> Texture2D:
+	var pad := int(ceil(line_width_px)) + 2
+	var r := float(radius_px)
+	var lw := float(line_width_px)
+	
+	var size := int(ceil((r + pad) * 2.0))
+	size = max(size, 8)
+	
+	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	
+	var c := Vector2(size * 0.5, size * 0.5)
+	var half := lw * 0.5
+	
+	for y in range(size):
+		for x in range(size):
+			var d := Vector2(x + 0.5, y + 0.5).distance_to(c)
+			if abs(d - r) <= half:
+				img.set_pixel(x, y, Color(1, 1, 1, 1))
+	
+	return ImageTexture.create_from_image(img)
+
+func _ensure_add_material(ci: CanvasItem) -> void:
+	var m := ci.material as CanvasItemMaterial
+	if m == null:
+		m = CanvasItemMaterial.new()
+		ci.material = m
+	m.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+
+func _play_target_hit_fx() -> void:
+	if not target_height_line:
+		return
+	
+	# Glow on the ring
+	_ensure_add_material(target_height_line)
+	target_height_line.modulate = target_hit_color
+	
+	var tween := create_tween()
+	tween.tween_property(target_height_line, "scale", Vector2.ONE * 1.08, 0.12).from(Vector2.ONE)
+	tween.tween_property(target_height_line, "scale", Vector2.ONE, 0.18)
+	tween.parallel().tween_property(target_height_line, "modulate:a", 0.15, 0.45).from(1.0)
+	tween.tween_callback(func():
+		# return to idle
+		target_height_line.material = null
+		target_height_line.modulate = Color(1, 1, 1, target_ring_idle_alpha)
+		target_height_line.scale = Vector2.ONE
+	)
+	
+	# Flash ring (one-shot)
+	var flash := Sprite2D.new()
+	flash.texture = _make_ring_texture(target_ring_radius_px, target_ring_line_width_px * 2.0)
+	flash.centered = true
+	flash.global_position = target_height_line.global_position
+	flash.z_index = target_height_line.z_index + 1
+	flash.modulate = target_hit_color
+	_ensure_add_material(flash)
+	add_child(flash)
+	
+	var t2 := create_tween()
+	t2.tween_property(flash, "scale", Vector2.ONE * 1.35, 0.18).from(Vector2.ONE * 0.85)
+	t2.parallel().tween_property(flash, "modulate:a", 0.0, 0.18).from(1.0)
+	t2.tween_callback(flash.queue_free)
