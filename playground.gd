@@ -49,6 +49,7 @@ var target_ring_radius_px: float = 0.0
 var throw_initial_upward_speed: float = 0.0
 var throw_force_ratio: float = 0.0
 var throw_force_visual_ratio: float = 0.0
+var ball_left_hand_after_throw: bool = false
 var force_outline_container: Node2D
 var force_outline_top_lines: Array[Line2D] = []
 var force_outline_bottom_lines: Array[Line2D] = []
@@ -136,6 +137,8 @@ func _physics_process(_delta):
 
 		# Update height indicator
 		_update_height_indicator()
+		if not ball_left_hand_after_throw and current_y < default_ball_position.y - 1.0:
+			ball_left_hand_after_throw = true
 		
 		# Calculate which frame to show (0, 1, or 2)
 		# Frame 0 = ball at start (hands down)
@@ -157,8 +160,13 @@ func _physics_process(_delta):
 			# Directly set sprite frame
 			player_sprite.frame = frame
 		
-		if current_y >= default_ball_position.y:
+		if ball_left_hand_after_throw and current_velocity_y >= 0.0 and current_y >= default_ball_position.y:
 			ball.global_position = default_ball_position
+			ball.linear_velocity = Vector2.ZERO
+			ball.angular_velocity = 0.0
+			ball.freeze = true
+			ball_is_thrown = false
+			ball_left_hand_after_throw = false
 			player_sprite.frame = 0  # Reset to frame 0
 			max_ball_height = 0.0
 			triggers_fired.clear()  # Reset triggers
@@ -177,6 +185,7 @@ func _on_throw_button_pressed():
 	player_sprite.frame = 0  # Start at frame 0
 	triggers_fired.clear()  # Reset triggers for new throw
 	previous_velocity_y = 0.0
+	ball_left_hand_after_throw = false
 	
 	var force_value: float = 0.0
 	if force_input and force_input.text != "":
