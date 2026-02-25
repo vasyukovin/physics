@@ -1,5 +1,8 @@
 extends Node2D
 
+const CameraShakeController = preload("res://Scripts/camera_shake_controller.gd")
+const ForceOutlineRenderer = preload("res://Scripts/force_outline_renderer.gd")
+
 @onready var ball: RigidBody2D = $Ball
 @onready var player_node: Node2D = $Player
 @onready var force_input: LineEdit = $UI/ForceInput
@@ -42,17 +45,13 @@ var starting_ball_y: float
 var target_line_y: float  # Y position of the target line
 var previous_velocity_y: float = 0.0  # Previous frame's vertical velocity
 var triggers_fired: Dictionary = {}  # Track which triggers have fired this throw
-var camera_original_offset: Vector2 = Vector2.ZERO  # Store original camera offset
-var shake_timer: float = 0.0  # Timer for shake duration
-var is_shaking: bool = false  # Whether camera is currently shaking
 var target_ring_radius_px: float = 0.0
 var throw_initial_upward_speed: float = 0.0
 var throw_force_ratio: float = 0.0
 var throw_force_visual_ratio: float = 0.0
 var ball_left_hand_after_throw: bool = false
-var force_outline_container: Node2D
-var force_outline_top_lines: Array[Line2D] = []
-var force_outline_bottom_lines: Array[Line2D] = []
+var camera_shake_controller: CameraShakeController
+var force_outline_renderer: ForceOutlineRenderer
 
 func _ready():
 	default_ball_position = ball.global_position
@@ -99,17 +98,16 @@ func _ready():
 		target_height_line.modulate = Color(1, 1, 1, target_ring_idle_alpha)
 		target_height_line.z_index = 10
 
-	# Store original camera offset
-	if camera:
-		camera_original_offset = camera.offset
+	camera_shake_controller = CameraShakeController.new()
+	camera_shake_controller.setup(camera, shake_intensity, shake_duration)
 	
 	_apply_fixed_z_order()
 	_setup_force_outline()
 	
 func _physics_process(_delta):
 	# Update camera shake
-	if is_shaking:
-		_update_camera_shake(_delta)
+	if camera_shake_controller:
+		camera_shake_controller.update(_delta)
 	
 	if ball_is_thrown and not ball.freeze:
 		var current_y = ball.global_position.y
@@ -224,13 +222,19 @@ func _update_throw_force_ratio(current_velocity_y: float, delta: float) -> void:
 	throw_force_visual_ratio = lerp(throw_force_visual_ratio, throw_force_ratio, blend)
 
 func _setup_force_outline() -> void:
-	force_outline_container = Node2D.new()
-	force_outline_container.name = "ForceOutlineOverlay"
-	force_outline_container.z_as_relative = false
-	force_outline_container.z_index = force_outline_z_index
-	ball.add_child(force_outline_container)
-	_rebuild_force_outline_lines()
-	force_outline_container.visible = false
+	force_outline_renderer = ForceOutlineRenderer.new()
+	force_outline_renderer.setup(
+		ball,
+		force_outline_z_index,
+		force_outline_width_px,
+		force_outline_red_base,
+		force_outline_blue_base,
+		force_outline_blue_alpha,
+		force_outline_red_min_alpha,
+		force_outline_softness_px,
+		force_outline_soft_layers,
+		force_outline_half_arc_ratio
+	)
 
 func _apply_fixed_z_order() -> void:
 	if player_node:
@@ -241,108 +245,16 @@ func _apply_fixed_z_order() -> void:
 		ball.z_as_relative = false
 		ball.z_index = ball_z_index
 
-func _rebuild_force_outline_lines() -> void:
-	if not force_outline_container:
-		return
-	
-	for line in force_outline_top_lines:
-		if is_instance_valid(line):
-			line.queue_free()
-	for line in force_outline_bottom_lines:
-		if is_instance_valid(line):
-			line.queue_free()
-	
-	force_outline_top_lines.clear()
-	force_outline_bottom_lines.clear()
-	
-	var soft_layers: int = max(force_outline_soft_layers, 0)
-	var total_layers: int = soft_layers + 1
-	
-	for _i in range(total_layers):
-		var top_line := Line2D.new()
-		top_line.antialiased = true
-		top_line.closed = false
-		top_line.begin_cap_mode = Line2D.LINE_CAP_ROUND
-		top_line.end_cap_mode = Line2D.LINE_CAP_ROUND
-		force_outline_container.add_child(top_line)
-		force_outline_top_lines.append(top_line)
-		
-		var bottom_line := Line2D.new()
-		bottom_line.antialiased = true
-		bottom_line.closed = false
-		bottom_line.begin_cap_mode = Line2D.LINE_CAP_ROUND
-		bottom_line.end_cap_mode = Line2D.LINE_CAP_ROUND
-		force_outline_container.add_child(bottom_line)
-		force_outline_bottom_lines.append(bottom_line)
-
-func _build_arc_points(center: Vector2, radius: float, start_angle: float, end_angle: float, point_count: int) -> PackedVector2Array:
-	var points := PackedVector2Array()
-	var safe_count: int = max(point_count, 4)
-	for i in range(safe_count + 1):
-		var t := float(i) / float(safe_count)
-		var angle: float = lerp(start_angle, end_angle, t)
-		points.append(center + Vector2(cos(angle), sin(angle)) * radius)
-	return points
-
 func _update_force_outline_visual() -> void:
-	if not force_outline_container:
+	if not force_outline_renderer:
 		return
 	
-	var should_show := ball and ball_is_thrown and not ball.freeze
-	force_outline_container.visible = should_show
-	if not should_show:
-		return
-	
-	var soft_layers: int = max(force_outline_soft_layers, 0)
-	var total_layers: int = soft_layers + 1
-	if force_outline_top_lines.size() != total_layers or force_outline_bottom_lines.size() != total_layers:
-		_rebuild_force_outline_lines()
-	
-	var center := Vector2.ZERO
-	var radius: float = _get_ball_radius_px() + 2.0
-	var point_count: int = 36
-	
-	# Each force arc uses less than 50% of circumference to avoid color overlap.
-	var arc_ratio: float = clamp(force_outline_half_arc_ratio, 0.2, 0.49)
-	var arc_span: float = TAU * arc_ratio
-	var top_center_angle: float = -PI * 0.5
-	var bottom_center_angle: float = PI * 0.5
-	
-	var top_start: float = top_center_angle - arc_span * 0.5
-	var top_end: float = top_center_angle + arc_span * 0.5
-	var bottom_start: float = bottom_center_angle - arc_span * 0.5
-	var bottom_end: float = bottom_center_angle + arc_span * 0.5
-	
-	var top_points := _build_arc_points(center, radius, top_start, top_end, point_count)
-	var bottom_points := _build_arc_points(center, radius, bottom_start, bottom_end, point_count)
-	
-	for i in range(total_layers):
-		var layer_factor: float = 1.0
-		var width: float = force_outline_width_px
-		
-		if i > 0 and soft_layers > 0:
-			var t := float(i) / float(soft_layers)
-			layer_factor = pow(1.0 - t, 2.0) * 0.9
-			width = force_outline_width_px + (max(force_outline_softness_px, 0.0) * 2.0 * t)
-		
-		var top_line: Line2D = force_outline_top_lines[i]
-		var bottom_line: Line2D = force_outline_bottom_lines[i]
-		
-		top_line.position = Vector2.ZERO
-		bottom_line.position = Vector2.ZERO
-		top_line.points = top_points
-		bottom_line.points = bottom_points
-		top_line.width = width
-		bottom_line.width = width
-		
-		var top_color := force_outline_red_base
-		top_color.a = lerp(force_outline_red_min_alpha, 1.0, throw_force_visual_ratio) * layer_factor
-		
-		var bottom_color := force_outline_blue_base
-		bottom_color.a = clamp(force_outline_blue_alpha, 0.0, 1.0) * layer_factor
-		
-		top_line.default_color = top_color
-		bottom_line.default_color = bottom_color
+	force_outline_renderer.update_visual(
+		ball_is_thrown,
+		ball.freeze,
+		throw_force_visual_ratio,
+		_get_ball_radius_px()
+	)
 
 func _update_height_indicator():
 	if not ball_is_thrown or ball.freeze:
@@ -428,32 +340,13 @@ func _check_peak_triggers(ball_center_y: float):
 
 func _start_camera_shake():
 	"""Start the camera shake effect (earthquake)"""
-	if camera:
-		is_shaking = true
-		shake_timer = shake_duration
+	if camera_shake_controller:
+		camera_shake_controller.start()
 
 func _update_camera_shake(delta: float):
 	"""Update camera shake effect each frame"""
-	if not camera or not is_shaking:
-		return
-	
-	shake_timer -= delta
-	
-	if shake_timer <= 0.0:
-		# Shake is over, reset camera to original position
-		is_shaking = false
-		camera.offset = camera_original_offset
-	else:
-		# Calculate shake intensity (decreases over time)
-		var progress = shake_timer / shake_duration
-		var current_intensity = shake_intensity * progress
-		
-		# Apply random offset to camera
-		var random_offset = Vector2(
-			randf_range(-current_intensity, current_intensity),
-			randf_range(-current_intensity, current_intensity)
-		)
-		camera.offset = camera_original_offset + random_offset
+	if camera_shake_controller:
+		camera_shake_controller.update(delta)
 
 func _get_ball_radius_px() -> float:
 	# 1) Prefer collision radius (physics-accurate)
