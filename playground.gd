@@ -1,6 +1,7 @@
 extends Node2D
 
 const TargetRingControllerScript = preload("res://Scripts/target_ring_controller.gd")
+const HeightIndicatorControllerScript = preload("res://Scripts/height_indicator_controller.gd")
 
 @onready var ball: RigidBody2D = $Ball
 @onready var player_node: Node2D = $Player
@@ -51,6 +52,7 @@ var ball_left_hand_after_throw: bool = false
 var camera_shake_controller: CameraShakeController
 var force_outline_renderer: ForceOutlineRenderer
 var target_ring_controller
+var height_indicator_controller
 
 func _ready():
 	default_ball_position = ball.global_position
@@ -63,17 +65,14 @@ func _ready():
 	
 	force_input.text = "700"
 	
-	# Initialize height line
-	if height_line:
-		height_line.width = 2.0
-		height_line.default_color = Color.RED
-		height_line.visible = false
-
-	# Initialize height label
-	if height_label:
-		height_label.visible = false
-		height_label.add_theme_color_override("font_color", Color.RED)
-		height_label.add_theme_font_size_override("font_size", 24)
+	height_indicator_controller = HeightIndicatorControllerScript.new()
+	height_indicator_controller.setup(
+		self,
+		height_line,
+		height_label,
+		line_x_offset,
+		pixels_per_meter
+	)
 	
 	# Initialize static target height line above player
 	target_line_y = starting_ball_y - 232.69947052002  # Fixed Y position above player
@@ -166,10 +165,8 @@ func _physics_process(_delta):
 			previous_velocity_y = 0.0
 			throw_force_ratio = 0.0
 			throw_force_visual_ratio = 0.0
-			if height_line:
-				height_line.visible = false
-			if height_label:
-				height_label.visible = false
+			if height_indicator_controller:
+				height_indicator_controller.reset()
 	
 	_update_force_outline_visual()
 		
@@ -255,45 +252,8 @@ func _update_height_indicator():
 	if not ball_is_thrown or ball.freeze:
 		return
 	
-	var ball_center = ball.global_position
-	var reference_y = starting_ball_y  # Reference point (0 height)
-	
-	# Calculate height in pixels (Y increases downward, so lower Y = higher up)
-	var height_pixels = reference_y - ball_center.y
-	
-	# Convert to meters
-	# var height_meters = height_pixels / pixels_per_meter
-	var height_meters = height_pixels
-	
-	# Only show if ball is above reference point
-	if height_meters > 0:
-		if height_line:
-			height_line.visible = true
-			
-			# Position line next to ball (in global coordinates)
-			var line_start_global = Vector2(ball_center.x + line_x_offset, reference_y)
-			var line_end_global = Vector2(ball_center.x + line_x_offset, ball_center.y)
-			
-			# Convert to local coordinates (relative to HeightIndicator node)
-			var line_start = height_line.to_local(line_start_global)
-			var line_end = height_line.to_local(line_end_global)
-			
-			height_line.clear_points()
-			height_line.add_point(line_start)
-			height_line.add_point(line_end)
-		
-		# Update height label - show meters next to the ball
-		if height_label:
-			height_label.visible = true
-			height_label.text = "%.2f m" % height_meters  # Format: "X.XX m"
-			# Position label at the top of the line (at ball's current height)
-			height_label.position = to_local(Vector2(ball_center.x + line_x_offset + 10, ball_center.y - 20))
-			# print("Height label position: ", height_meters)
-		else:
-			if height_line:
-				height_line.visible = false
-			if height_label:
-				height_label.visible = false
+	if height_indicator_controller:
+		height_indicator_controller.update_indicator(ball.global_position, starting_ball_y)
 
 func _check_peak_triggers(ball_center_y: float):
 	# Get ball radius from collision shape
