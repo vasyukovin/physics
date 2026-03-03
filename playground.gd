@@ -3,6 +3,7 @@ extends Node2D
 const TargetRingControllerScript = preload("res://Scripts/target_ring_controller.gd")
 const HeightIndicatorControllerScript = preload("res://Scripts/height_indicator_controller.gd")
 const ThrowStateControllerScript = preload("res://Scripts/throw_state_controller.gd")
+const PeakTriggerEvaluatorScript = preload("res://Scripts/peak_trigger_evaluator.gd")
 
 @onready var ball: RigidBody2D = $Ball
 @onready var player_node: Node2D = $Player
@@ -46,6 +47,7 @@ var force_outline_renderer: ForceOutlineRenderer
 var target_ring_controller
 var height_indicator_controller
 var throw_state_controller
+var peak_trigger_evaluator
 
 func _ready():
 	var default_ball_position := ball.global_position
@@ -96,6 +98,7 @@ func _ready():
 		starting_ball_y,
 		force_red_fade_smooth_speed
 	)
+	peak_trigger_evaluator = PeakTriggerEvaluatorScript.new()
 	
 	_apply_fixed_z_order()
 	_setup_force_outline()
@@ -181,41 +184,29 @@ func _update_height_indicator():
 		height_indicator_controller.update_indicator(ball.global_position, starting_ball_y)
 
 func _check_peak_triggers(ball_center_y: float):
-	# Get ball radius from collision shape
-	var ball_radius: float = 10.0  # Default fallback
-	if ball.has_node("CollisionShape2D"):
-		var collision_shape = ball.get_node("CollisionShape2D")
-		if collision_shape and collision_shape.shape is CircleShape2D:
-			ball_radius = collision_shape.shape.radius
+	if not peak_trigger_evaluator:
+		return
 	
-	# Calculate highest point of ball (top of ball = center_y - radius)
-	var highest_point_y = ball_center_y - ball_radius
+	var result: Dictionary = peak_trigger_evaluator.evaluate_peak(
+		ball_center_y,
+		_get_ball_radius_px(),
+		target_line_y,
+		ball.global_position,
+		target_ring_controller,
+		triggers_fired
+	)
 	
-	# Trigger 1: Highest point is below the line
-	# (Y increases downward, so higher Y = lower position)
-	if highest_point_y > target_line_y:
-		if not triggers_fired.get("below_line", false):
-			triggers_fired["below_line"] = true
-			print("ТРИГГЕР 1: Высочайшая точка шара ниже линии")
+	if result.get("below_line_triggered", false):
+		print("ТРИГГЕР 1: Высочайшая точка шара ниже линии")
 	
-	# Trigger 2: Center of ball is above the line
-	if ball_center_y < target_line_y:
-		if not triggers_fired.get("above_line", false):
-			triggers_fired["above_line"] = true
-			print("ТРИГГЕР 2: Центр шара выше линии")
-			_start_camera_shake()  # Start earthquake effect
+	if result.get("above_line_triggered", false):
+		print("ТРИГГЕР 2: Центр шара выше линии")
+		_start_camera_shake()  # Start earthquake effect
 	
-	# Trigger 3: "Hit" when ball center is close enough to target circle center (2D distance)
-	if target_ring_controller:
-		var ball_pos := ball.global_position
-		var dist: float = target_ring_controller.get_distance_to_target(ball_pos)
-		
-		# Note: ring radius is ball_radius + tolerance; for a "hit" we check center offset <= tolerance
-		if target_ring_controller.is_hit(ball_pos):
-			if not triggers_fired.get("on_line", false):
-				triggers_fired["on_line"] = true
-				print("ТРИГГЕР 3: попадание в цель (dist=%.2f px)" % dist)
-				target_ring_controller.play_hit_fx()
+	if result.get("on_line_triggered", false):
+		print("ТРИГГЕР 3: попадание в цель (dist=%.2f px)" % result.get("hit_distance", INF))
+		if target_ring_controller:
+			target_ring_controller.play_hit_fx()
 
 func _start_camera_shake():
 	"""Start the camera shake effect (earthquake)"""
