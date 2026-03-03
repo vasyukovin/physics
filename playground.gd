@@ -1,7 +1,6 @@
 extends Node2D
 
-const CameraShakeController = preload("res://Scripts/camera_shake_controller.gd")
-const ForceOutlineRenderer = preload("res://Scripts/force_outline_renderer.gd")
+const TargetRingControllerScript = preload("res://Scripts/target_ring_controller.gd")
 
 @onready var ball: RigidBody2D = $Ball
 @onready var player_node: Node2D = $Player
@@ -45,13 +44,13 @@ var starting_ball_y: float
 var target_line_y: float  # Y position of the target line
 var previous_velocity_y: float = 0.0  # Previous frame's vertical velocity
 var triggers_fired: Dictionary = {}  # Track which triggers have fired this throw
-var target_ring_radius_px: float = 0.0
 var throw_initial_upward_speed: float = 0.0
 var throw_force_ratio: float = 0.0
 var throw_force_visual_ratio: float = 0.0
 var ball_left_hand_after_throw: bool = false
 var camera_shake_controller: CameraShakeController
 var force_outline_renderer: ForceOutlineRenderer
+var target_ring_controller
 
 func _ready():
 	default_ball_position = ball.global_position
@@ -77,26 +76,22 @@ func _ready():
 		height_label.add_theme_font_size_override("font_size", 24)
 	
 	# Initialize static target height line above player
-	if target_height_line:
-		target_height_line.visible = true
-		
-
-		target_line_y = starting_ball_y - 232.69947052002  # Fixed Y position above player
-
-		if player_sprite:
-			var player_x = player_sprite.global_position.x
-			target_height_line.global_position = Vector2(player_x, target_line_y)
-		
-		# Procedural ring: same size as ball + tolerance (for "forgiveness")
-		var ball_radius := _get_ball_radius_px()
-		target_ring_radius_px = ball_radius + target_tolerance_px
-		
-		target_height_line.texture = _make_ring_texture(target_ring_radius_px, target_ring_line_width_px)
-		target_height_line.centered = true
-		target_height_line.material = null
-		target_height_line.scale = Vector2.ONE
-		target_height_line.modulate = Color(1, 1, 1, target_ring_idle_alpha)
-		target_height_line.z_index = 10
+	target_line_y = starting_ball_y - 232.69947052002  # Fixed Y position above player
+	target_ring_controller = TargetRingControllerScript.new()
+	var target_x: float = ball.global_position.x
+	if player_sprite:
+		target_x = player_sprite.global_position.x
+	target_ring_controller.setup(
+		self,
+		target_height_line,
+		target_line_y,
+		target_x,
+		_get_ball_radius_px(),
+		target_tolerance_px,
+		target_ring_line_width_px,
+		target_ring_idle_alpha,
+		target_hit_color
+	)
 
 	camera_shake_controller = CameraShakeController.new()
 	camera_shake_controller.setup(camera, shake_intensity, shake_duration)
@@ -326,17 +321,16 @@ func _check_peak_triggers(ball_center_y: float):
 			_start_camera_shake()  # Start earthquake effect
 	
 	# Trigger 3: "Hit" when ball center is close enough to target circle center (2D distance)
-	if target_height_line:
+	if target_ring_controller:
 		var ball_pos := ball.global_position
-		var target_pos := target_height_line.global_position
-		var dist := ball_pos.distance_to(target_pos)
+		var dist: float = target_ring_controller.get_distance_to_target(ball_pos)
 		
 		# Note: ring radius is ball_radius + tolerance; for a "hit" we check center offset <= tolerance
-		if dist <= target_tolerance_px:
+		if target_ring_controller.is_hit(ball_pos):
 			if not triggers_fired.get("on_line", false):
 				triggers_fired["on_line"] = true
 				print("ТРИГГЕР 3: попадание в цель (dist=%.2f px)" % dist)
-				_play_target_hit_fx()
+				target_ring_controller.play_hit_fx()
 
 func _start_camera_shake():
 	"""Start the camera shake effect (earthquake)"""
@@ -366,65 +360,3 @@ func _get_ball_radius_px() -> float:
 	
 	return 10.0
 
-func _make_ring_texture(radius_px: float, line_width_px: float) -> Texture2D:
-	var pad := int(ceil(line_width_px)) + 2
-	var r := float(radius_px)
-	var lw := float(line_width_px)
-	
-	var size := int(ceil((r + pad) * 2.0))
-	size = max(size, 8)
-	
-	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
-	img.fill(Color(0, 0, 0, 0))
-	
-	var c := Vector2(size * 0.5, size * 0.5)
-	var half := lw * 0.5
-	
-	for y in range(size):
-		for x in range(size):
-			var d := Vector2(x + 0.5, y + 0.5).distance_to(c)
-			if abs(d - r) <= half:
-				img.set_pixel(x, y, Color(1, 1, 1, 1))
-	
-	return ImageTexture.create_from_image(img)
-
-func _ensure_add_material(ci: CanvasItem) -> void:
-	var m := ci.material as CanvasItemMaterial
-	if m == null:
-		m = CanvasItemMaterial.new()
-		ci.material = m
-	m.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
-
-func _play_target_hit_fx() -> void:
-	if not target_height_line:
-		return
-	
-	# Glow on the ring
-	_ensure_add_material(target_height_line)
-	target_height_line.modulate = target_hit_color
-	
-	var tween := create_tween()
-	tween.tween_property(target_height_line, "scale", Vector2.ONE * 1.08, 0.12).from(Vector2.ONE)
-	tween.tween_property(target_height_line, "scale", Vector2.ONE, 0.18)
-	tween.parallel().tween_property(target_height_line, "modulate:a", 0.15, 0.45).from(1.0)
-	tween.tween_callback(func():
-		# return to idle
-		target_height_line.material = null
-		target_height_line.modulate = Color(1, 1, 1, target_ring_idle_alpha)
-		target_height_line.scale = Vector2.ONE
-	)
-	
-	# Flash ring (one-shot)
-	var flash := Sprite2D.new()
-	flash.texture = _make_ring_texture(target_ring_radius_px, target_ring_line_width_px * 2.0)
-	flash.centered = true
-	flash.global_position = target_height_line.global_position
-	flash.z_index = target_height_line.z_index + 1
-	flash.modulate = target_hit_color
-	_ensure_add_material(flash)
-	add_child(flash)
-	
-	var t2 := create_tween()
-	t2.tween_property(flash, "scale", Vector2.ONE * 1.35, 0.18).from(Vector2.ONE * 0.85)
-	t2.parallel().tween_property(flash, "modulate:a", 0.0, 0.18).from(1.0)
-	t2.tween_callback(flash.queue_free)
