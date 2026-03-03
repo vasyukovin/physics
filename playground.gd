@@ -21,6 +21,7 @@ const BallScene = preload("res://Ball/ball.tscn")
 @onready var height_label: Label = $HeightLabel
 @onready var target_height_line: Sprite2D = $TargetHeightLine
 @onready var camera: Camera2D = $Camera2D
+@onready var professor_dialog_label: Label = $Professor/SpeechBubble/Margin/SpeechText
 
 @export var hand_y_offset: float = 380.0
 @export var pixels_per_meter: float = 100.0  # Conversion factor: 100 pixels = 1 meter
@@ -122,6 +123,7 @@ func _ready():
 	
 	_apply_fixed_z_order()
 	_setup_force_outline()
+	_professor_say("Профессор: ожидаю бросок.")
 	
 func _physics_process(_delta):
 	# Update camera shake
@@ -145,6 +147,7 @@ func _physics_process(_delta):
 		
 func _on_throw_button_pressed():
 	triggers_fired.clear()  # Reset triggers for new throw
+	_professor_say("Профессор: наблюдаю за траекторией...")
 	
 	var force_value: float = 0.0
 	if force_input and force_input.text != "":
@@ -217,16 +220,27 @@ func _check_peak_triggers(ball_center_y: float):
 	)
 	
 	if result.get("below_line_triggered", false):
-		print("ТРИГГЕР 1: Высочайшая точка шара ниже линии")
+		var message := "ТРИГГЕР 1: Высочайшая точка шара ниже линии"
+		print(message)
+		_professor_say("Профессор: " + message)
 	
 	if result.get("above_line_triggered", false):
-		print("ТРИГГЕР 2: Центр шара выше линии")
+		var message := "ТРИГГЕР 2: Центр шара выше линии"
+		print(message)
+		_professor_say("Профессор: " + message)
 		_start_camera_shake()  # Start earthquake effect
 	
 	if result.get("on_line_triggered", false):
-		print("ТРИГГЕР 3: попадание в цель (dist=%.2f px)" % result.get("hit_distance", INF))
+		var message := "ТРИГГЕР 3: попадание в цель (dist=%.2f px)" % result.get("hit_distance", INF)
+		print(message)
+		_professor_say("Профессор: " + message)
 		if target_ring_controller:
 			target_ring_controller.play_hit_fx()
+
+func _professor_say(text: String) -> void:
+	if not professor_dialog_label:
+		return
+	professor_dialog_label.text = text
 
 func _start_camera_shake():
 	"""Start the camera shake effect (earthquake)"""
