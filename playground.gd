@@ -4,11 +4,18 @@ const TargetRingControllerScript = preload("res://Scripts/target_ring_controller
 const HeightIndicatorControllerScript = preload("res://Scripts/height_indicator_controller.gd")
 const ThrowStateControllerScript = preload("res://Scripts/throw_state_controller.gd")
 const PeakTriggerEvaluatorScript = preload("res://Scripts/peak_trigger_evaluator.gd")
+const BallStateLegendControllerScript = preload("res://Scripts/ball_state_legend_controller.gd")
+const BallScene = preload("res://Ball/ball.tscn")
 
 @onready var ball: RigidBody2D = $Ball
 @onready var player_node: Node2D = $Player
 @onready var force_input: LineEdit = $UI/ForceInput
 @onready var throw_button: Button = $UI/ThrowButton
+@onready var state_legend_panel: PanelContainer = $UI/StateLegend
+@onready var gravity_ball_slot: Control = $UI/StateLegend/Margin/Content/GravityRow/GravityBallSlot
+@onready var impulse_ball_slot: Control = $UI/StateLegend/Margin/Content/ImpulseRow/ImpulseBallSlot
+@onready var gravity_description: Label = $UI/StateLegend/Margin/Content/GravityRow/GravityDescription
+@onready var impulse_description: Label = $UI/StateLegend/Margin/Content/ImpulseRow/ImpulseDescription
 @onready var player_sprite: Sprite2D = $Player/Sprite2D
 @onready var height_line: Line2D = $HeightIndicator
 @onready var height_label: Label = $HeightLabel
@@ -48,6 +55,7 @@ var target_ring_controller
 var height_indicator_controller
 var throw_state_controller
 var peak_trigger_evaluator
+var ball_state_legend_controller
 
 func _ready():
 	var default_ball_position := ball.global_position
@@ -99,6 +107,18 @@ func _ready():
 		force_red_fade_smooth_speed
 	)
 	peak_trigger_evaluator = PeakTriggerEvaluatorScript.new()
+	ball_state_legend_controller = BallStateLegendControllerScript.new()
+	ball_state_legend_controller.setup(
+		state_legend_panel,
+		gravity_ball_slot,
+		impulse_ball_slot,
+		gravity_description,
+		impulse_description,
+		BallScene,
+		pixels_per_meter,
+		force_outline_blue_base,
+		force_outline_red_base
+	)
 	
 	_apply_fixed_z_order()
 	_setup_force_outline()
@@ -235,4 +255,3 @@ func _get_ball_radius_px() -> float:
 			return 0.5 * size.x * s.scale.x
 	
 	return 10.0
-
