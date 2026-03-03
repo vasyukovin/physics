@@ -2,6 +2,7 @@ extends Node2D
 
 const TargetRingControllerScript = preload("res://Scripts/target_ring_controller.gd")
 const HeightIndicatorControllerScript = preload("res://Scripts/height_indicator_controller.gd")
+const ThrowStateControllerScript = preload("res://Scripts/throw_state_controller.gd")
 
 @onready var ball: RigidBody2D = $Ball
 @onready var player_node: Node2D = $Player
@@ -37,27 +38,19 @@ const HeightIndicatorControllerScript = preload("res://Scripts/height_indicator_
 @export_range(0.2, 0.49, 0.01) var force_outline_half_arc_ratio: float = 0.25
 @export var force_red_fade_smooth_speed: float = 7.0
 
-var default_ball_position: Vector2 
-var hand_position_y: float
-var ball_is_thrown: bool = false
-var max_ball_height: float = 0.0
 var starting_ball_y: float
 var target_line_y: float  # Y position of the target line
-var previous_velocity_y: float = 0.0  # Previous frame's vertical velocity
 var triggers_fired: Dictionary = {}  # Track which triggers have fired this throw
-var throw_initial_upward_speed: float = 0.0
-var throw_force_ratio: float = 0.0
-var throw_force_visual_ratio: float = 0.0
-var ball_left_hand_after_throw: bool = false
 var camera_shake_controller: CameraShakeController
 var force_outline_renderer: ForceOutlineRenderer
 var target_ring_controller
 var height_indicator_controller
+var throw_state_controller
 
 func _ready():
-	default_ball_position = ball.global_position
+	var default_ball_position := ball.global_position
 	starting_ball_y = default_ball_position.y
-	hand_position_y = default_ball_position.y + hand_y_offset 
+	var hand_position_y: float = default_ball_position.y + hand_y_offset 
 	
 	ball.freeze = true
 	
@@ -94,6 +87,15 @@ func _ready():
 
 	camera_shake_controller = CameraShakeController.new()
 	camera_shake_controller.setup(camera, shake_intensity, shake_duration)
+	throw_state_controller = ThrowStateControllerScript.new()
+	throw_state_controller.setup(
+		ball,
+		player_sprite,
+		default_ball_position,
+		hand_position_y,
+		starting_ball_y,
+		force_red_fade_smooth_speed
+	)
 	
 	_apply_fixed_z_order()
 	_setup_force_outline()
@@ -103,79 +105,23 @@ func _physics_process(_delta):
 	if camera_shake_controller:
 		camera_shake_controller.update(_delta)
 	
-	if ball_is_thrown and not ball.freeze:
-		var current_y = ball.global_position.y
-		var current_velocity_y = ball.linear_velocity.y
-		_update_throw_force_ratio(current_velocity_y, _delta)
-
-		# Track maximum height (lowest Y value = highest up)
-		if current_y < max_ball_height:
-			max_ball_height = current_y
-
-		# Detect peak: when velocity changes from negative (going up) to positive (going down)
-		# or when velocity is close to zero and was negative before
-		var is_at_peak = false
-		if previous_velocity_y < 0 and current_velocity_y >= 0:
-			is_at_peak = true
-		elif abs(current_velocity_y) < 5.0 and previous_velocity_y < 0:
-			is_at_peak = true
+	if throw_state_controller:
+		throw_state_controller.physics_step(_delta)
+		if throw_state_controller.did_process_frame():
+			if throw_state_controller.is_at_peak_this_frame() and not triggers_fired.get("peak_checked", false):
+				triggers_fired["peak_checked"] = true
+				_check_peak_triggers(throw_state_controller.get_current_y())
+			_update_height_indicator()
 		
-		# Check triggers at peak
-		if is_at_peak and not triggers_fired.get("peak_checked", false):
-			triggers_fired["peak_checked"] = true
-			_check_peak_triggers(current_y)
-		
-		previous_velocity_y = current_velocity_y
-
-		# Update height indicator
-		_update_height_indicator()
-		if not ball_left_hand_after_throw and current_y < default_ball_position.y - 1.0:
-			ball_left_hand_after_throw = true
-		
-		# Calculate which frame to show (0, 1, or 2)
-		# Frame 0 = ball at start (hands down)
-		# Frame 1 = ball at middle
-		# Frame 2 = ball at peak (hands up)
-		var total_range = abs(max_ball_height - starting_ball_y)
-		
-		if total_range > 0:
-			# How far is ball from starting position?
-			var distance_from_start = abs(current_y - hand_position_y)
-			var progress = distance_from_start / total_range
-			
-			# Map to frame (0, 1, or 2)
-			# Going up: progress 0->1, frame 0->2
-			# Coming down: progress 1->0, frame 2->0
-			var frame = int(progress * 2.0)  # 0, 1, or 2
-			frame = clamp(frame, 0, 2)
-			
-			# Directly set sprite frame
-			player_sprite.frame = frame
-		
-		if ball_left_hand_after_throw and current_velocity_y >= 0.0 and current_y >= default_ball_position.y:
-			ball.global_position = default_ball_position
-			ball.linear_velocity = Vector2.ZERO
-			ball.angular_velocity = 0.0
-			ball.freeze = true
-			ball_is_thrown = false
-			ball_left_hand_after_throw = false
-			player_sprite.frame = 0  # Reset to frame 0
-			max_ball_height = 0.0
+		if throw_state_controller.did_reset_this_frame():
 			triggers_fired.clear()  # Reset triggers
-			previous_velocity_y = 0.0
-			throw_force_ratio = 0.0
-			throw_force_visual_ratio = 0.0
 			if height_indicator_controller:
 				height_indicator_controller.reset()
 	
 	_update_force_outline_visual()
 		
 func _on_throw_button_pressed():
-	max_ball_height = default_ball_position.y
-	player_sprite.frame = 0  # Start at frame 0
 	triggers_fired.clear()  # Reset triggers for new throw
-	previous_velocity_y = 0.0
-	ball_left_hand_after_throw = false
 	
 	var force_value: float = 0.0
 	if force_input and force_input.text != "":
@@ -183,35 +129,14 @@ func _on_throw_button_pressed():
 	else:
 		force_value = 500.0
 	
-	ball.freeze = true
-	ball.linear_velocity = Vector2.ZERO
-	ball.angular_velocity = 0.0
+	if throw_state_controller:
+		throw_state_controller.begin_throw_prep()
 	
 	await get_tree().process_frame
 	
-	ball.freeze = false
-	ball.apply_impulse(Vector2(0, -force_value))
-	throw_initial_upward_speed = max(-ball.linear_velocity.y, 1.0)
-	throw_force_ratio = 1.0
-	throw_force_visual_ratio = 1.0
-	
-	ball_is_thrown = true
+	if throw_state_controller:
+		throw_state_controller.launch_throw(force_value)
 	_update_force_outline_visual()
-
-func _update_throw_force_ratio(current_velocity_y: float, delta: float) -> void:
-	if throw_initial_upward_speed <= 0.0:
-		throw_force_ratio = 0.0
-		throw_force_visual_ratio = 0.0
-		return
-	
-	# "Throw force" exists only while the ball still moves upward.
-	var upward_speed = max(-current_velocity_y, 0.0)
-	throw_force_ratio = clamp(upward_speed / throw_initial_upward_speed, 0.0, 1.0)
-	
-	# Smooth fade so red doesn't disappear abruptly near apex.
-	var smooth_speed: float = max(force_red_fade_smooth_speed, 0.01)
-	var blend: float = clamp(delta * smooth_speed, 0.0, 1.0)
-	throw_force_visual_ratio = lerp(throw_force_visual_ratio, throw_force_ratio, blend)
 
 func _setup_force_outline() -> void:
 	force_outline_renderer = ForceOutlineRenderer.new()
@@ -242,14 +167,14 @@ func _update_force_outline_visual() -> void:
 		return
 	
 	force_outline_renderer.update_visual(
-		ball_is_thrown,
+		throw_state_controller and throw_state_controller.is_ball_thrown(),
 		ball.freeze,
-		throw_force_visual_ratio,
+		throw_state_controller.get_throw_force_visual_ratio() if throw_state_controller else 0.0,
 		_get_ball_radius_px()
 	)
 
 func _update_height_indicator():
-	if not ball_is_thrown or ball.freeze:
+	if not throw_state_controller or not throw_state_controller.is_throw_active():
 		return
 	
 	if height_indicator_controller:
