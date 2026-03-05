@@ -31,6 +31,8 @@ const BallScene = preload("res://Ball/ball.tscn")
 @export var player_z_index: int = 0
 @export var force_outline_z_index: int = 1
 @export var ball_z_index: int = 2
+@export var target_distances_px: PackedFloat32Array = PackedFloat32Array([232.69947052002])
+@export var active_target_index: int = 0
 
 # Target ring (procedural circle indicator)
 @export var target_tolerance_px: float = 10.0  # Allowed center offset for a "hit"
@@ -58,6 +60,12 @@ var throw_state_controller
 var peak_trigger_evaluator
 var ball_state_legend_controller
 
+func _get_active_target_distance_px() -> float:
+	if target_distances_px.is_empty():
+		return 232.69947052002
+	var clamped_index: int = clampi(active_target_index, 0, target_distances_px.size() - 1)
+	return max(target_distances_px[clamped_index], 0.0)
+
 func _ready():
 	var default_ball_position := ball.global_position
 	starting_ball_y = default_ball_position.y
@@ -78,8 +86,8 @@ func _ready():
 		pixels_per_meter
 	)
 	
-	# Initialize static target height line above player
-	target_line_y = starting_ball_y - 232.69947052002  # Fixed Y position above player
+	# Initialize target line from configured distances above player.
+	target_line_y = starting_ball_y - _get_active_target_distance_px()
 	target_ring_controller = TargetRingControllerScript.new()
 	var target_x: float = ball.global_position.x
 	if player_sprite:
