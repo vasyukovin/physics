@@ -11,6 +11,9 @@ const BallScene = preload("res://Ball/ball.tscn")
 @onready var player_node: Node2D = $Player
 @onready var force_input: LineEdit = $UI/ForceInput
 @onready var throw_button: Button = $UI/ThrowButton
+@onready var next_level_button: Button = $UI/NextLevelButton
+@onready var formula_label: Label = $UI/FormulaLabel
+@onready var level_label: Label = $UI/LevelLabel
 @onready var state_legend_panel: PanelContainer = $UI/StateLegend
 @onready var gravity_ball_slot: Control = $UI/StateLegend/Margin/Content/GravityRow/GravityBallSlot
 @onready var impulse_ball_slot: Control = $UI/StateLegend/Margin/Content/ImpulseRow/ImpulseBallSlot
@@ -20,6 +23,7 @@ const BallScene = preload("res://Ball/ball.tscn")
 @onready var height_line: Line2D = $HeightIndicator
 @onready var height_label: Label = $HeightLabel
 @onready var target_height_line: Sprite2D = $TargetHeightLine
+@onready var target_distance_label: Label = $TargetDistanceLabel
 @onready var camera: Camera2D = $Camera2D
 @onready var professor_dialog_label: Label = $Professor/SpeechBubble/Margin/SpeechText
 
@@ -31,7 +35,7 @@ const BallScene = preload("res://Ball/ball.tscn")
 @export var player_z_index: int = 0
 @export var force_outline_z_index: int = 1
 @export var ball_z_index: int = 2
-@export var target_distances_px: PackedFloat32Array = PackedFloat32Array([232.69947052002])
+@export var target_distances_px: PackedFloat32Array = PackedFloat32Array([232.69947052002, 300.0, 380.0])
 @export var active_target_index: int = 0
 
 # Target ring (procedural circle indicator)
@@ -49,9 +53,11 @@ const BallScene = preload("res://Ball/ball.tscn")
 @export_range(0.2, 0.49, 0.01) var force_outline_half_arc_ratio: float = 0.25
 @export var force_red_fade_smooth_speed: float = 7.0
 
+const TOTAL_LEVELS: int = 3
 var starting_ball_y: float
 var target_line_y: float  # Y position of the target line
 var triggers_fired: Dictionary = {}  # Track which triggers have fired this throw
+var current_level: int = 1
 var camera_shake_controller: CameraShakeController
 var force_outline_renderer: ForceOutlineRenderer
 var target_ring_controller
@@ -74,6 +80,7 @@ func _ready():
 	ball.freeze = true
 	
 	throw_button.pressed.connect(_on_throw_button_pressed)
+	next_level_button.pressed.connect(_on_next_level_button_pressed)
 	
 	force_input.text = "700"
 	
@@ -89,9 +96,7 @@ func _ready():
 	# Initialize target line from configured distances above player.
 	target_line_y = starting_ball_y - _get_active_target_distance_px()
 	target_ring_controller = TargetRingControllerScript.new()
-	var target_x: float = ball.global_position.x
-	if player_sprite:
-		target_x = player_sprite.global_position.x
+	var target_x: float = _get_target_x()
 	target_ring_controller.setup(
 		self,
 		target_height_line,
@@ -131,7 +136,8 @@ func _ready():
 	
 	_apply_fixed_z_order()
 	_setup_force_outline()
-	_professor_say("Профессор: ожидаю бросок.")
+	_apply_level_state()
+	_professor_say("Профессор: уровень 1. Нажмите бросок, и я покажу идеальную траекторию.")
 	
 func _physics_process(_delta):
 	# Update camera shake
@@ -154,11 +160,19 @@ func _physics_process(_delta):
 	_update_force_outline_visual()
 		
 func _on_throw_button_pressed():
+	if throw_state_controller and throw_state_controller.is_throw_active():
+		return
+	
 	triggers_fired.clear()  # Reset triggers for new throw
 	_professor_say("Профессор: наблюдаю за траекторией...")
 	
 	var force_value: float = 0.0
-	if force_input and force_input.text != "":
+	if current_level == 1:
+		force_value = _calculate_required_impulse(_get_active_target_distance_px())
+	elif force_input and force_input.text != "":
+		if not force_input.text.is_valid_float():
+			_professor_say("Профессор: введите число в поле силы.")
+			return
 		force_value = float(force_input.text)
 	else:
 		force_value = 500.0
@@ -241,9 +255,72 @@ func _check_peak_triggers(ball_center_y: float):
 	if result.get("on_line_triggered", false):
 		var message := "ТРИГГЕР 3: попадание в цель (dist=%.2f px)" % result.get("hit_distance", INF)
 		print(message)
-		_professor_say("Профессор: " + message)
+		if current_level < TOTAL_LEVELS:
+			next_level_button.visible = true
+			_professor_say("Профессор: " + message + ". Нажмите «Перейти на следующий уровень».")
+		else:
+			_professor_say("Профессор: " + message + ". Все уровни пройдены!")
 		if target_ring_controller:
 			target_ring_controller.play_hit_fx()
+
+func _on_next_level_button_pressed() -> void:
+	if throw_state_controller and throw_state_controller.is_throw_active():
+		return
+	if current_level >= TOTAL_LEVELS:
+		return
+	current_level += 1
+	next_level_button.visible = false
+	triggers_fired.clear()
+	if height_indicator_controller:
+		height_indicator_controller.reset()
+	_apply_level_state()
+	_professor_say("Профессор: уровень %d. Теперь рассчитайте силу и бросайте." % current_level)
+
+func _apply_level_state() -> void:
+	active_target_index = current_level - 1
+	target_line_y = starting_ball_y - _get_active_target_distance_px()
+	if target_ring_controller:
+		target_ring_controller.setup(
+			self,
+			target_height_line,
+			target_line_y,
+			_get_target_x(),
+			_get_ball_radius_px(),
+			target_tolerance_px,
+			target_ring_line_width_px,
+			target_ring_idle_alpha,
+			target_hit_color
+		)
+	
+	var target_distance_m: float = _get_active_target_distance_px() / pixels_per_meter
+	target_distance_label.text = "%.2f м" % target_distance_m
+	target_distance_label.global_position = Vector2(_get_target_x() + 28.0, target_line_y - 18.0)
+	
+	level_label.text = "Уровень %d/%d" % [current_level, TOTAL_LEVELS]
+	next_level_button.visible = false
+	
+	if current_level == 1:
+		force_input.visible = false
+		formula_label.visible = false
+	else:
+		force_input.visible = true
+		force_input.clear()
+		formula_label.visible = true
+		formula_label.text = "Формула: J = m * sqrt(2gh)\nДля цели: h = %.2f м" % target_distance_m
+
+func _get_target_x() -> float:
+	var target_x: float = ball.global_position.x
+	if player_sprite:
+		target_x = player_sprite.global_position.x
+	return target_x
+
+func _calculate_required_impulse(distance_px: float) -> float:
+	var gravity_px: float = float(ProjectSettings.get_setting("physics/2d/default_gravity", 980.0))
+	var speed_px: float = sqrt(max(2.0 * gravity_px * max(distance_px, 0.0), 0.0))
+	var ball_mass: float = 1.0
+	if ball:
+		ball_mass = max(ball.mass, 0.001)
+	return ball_mass * speed_px
 
 func _professor_say(text: String) -> void:
 	if not professor_dialog_label:

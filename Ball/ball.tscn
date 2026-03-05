@@ -5,6 +5,9 @@
 [sub_resource type="CircleShape2D" id="CircleShape2D_65gad"]
 
 [node name="Ball" type="RigidBody2D"]
+gravity_scale = 1.0
+linear_damp_mode = 1
+linear_damp = 0.0
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
 shape = SubResource("CircleShape2D_65gad")
