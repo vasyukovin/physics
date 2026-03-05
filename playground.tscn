@@ -114,6 +114,31 @@ offset_right = 180.0
 offset_bottom = -73.0
 text = "Уровень 1/3"
 
+[node name="Level3Forces" type="VBoxContainer" parent="UI"]
+visible = false
+layout_mode = 0
+offset_left = 58.0
+offset_top = -100.0
+offset_right = 245.0
+offset_bottom = -28.0
+theme_override_constants/separation = 4
+
+[node name="ForceInput1" type="LineEdit" parent="UI/Level3Forces"]
+layout_mode = 2
+placeholder_text = "Сила 1"
+
+[node name="ForceInput2" type="LineEdit" parent="UI/Level3Forces"]
+layout_mode = 2
+placeholder_text = "Сила 2"
+
+[node name="ForceInput3" type="LineEdit" parent="UI/Level3Forces"]
+layout_mode = 2
+placeholder_text = "Сила 3"
+
+[node name="ApplyForcesButton" type="Button" parent="UI/Level3Forces"]
+layout_mode = 2
+text = "Применить 3 силы"
+
 [node name="StateLegend" type="PanelContainer" parent="UI"]
 layout_mode = 0
 offset_left = -428.0
