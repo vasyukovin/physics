@@ -5,6 +5,10 @@ const HeightIndicatorControllerScript = preload("res://Scripts/height_indicator_
 const ThrowStateControllerScript = preload("res://Scripts/throw_state_controller.gd")
 const PeakTriggerEvaluatorScript = preload("res://Scripts/peak_trigger_evaluator.gd")
 const BallStateLegendControllerScript = preload("res://Scripts/ball_state_legend_controller.gd")
+const LevelProgressionControllerScript = preload("res://Scripts/level_progression_controller.gd")
+const Level3SequenceControllerScript = preload("res://Scripts/level3_sequence_controller.gd")
+const LevelUiControllerScript = preload("res://Scripts/level_ui_controller.gd")
+const CameraFollowControllerScript = preload("res://Scripts/camera_follow_controller.gd")
 const BallScene = preload("res://Ball/ball.tscn")
 
 @onready var ball: RigidBody2D = $Ball
@@ -59,33 +63,35 @@ const BallScene = preload("res://Ball/ball.tscn")
 @export var force_red_fade_smooth_speed: float = 7.0
 @export var level3_target_distances_px: PackedFloat32Array = PackedFloat32Array([380.0, 460.0, 540.0])
 @export var camera_follow_smooth_speed: float = 6.0
+@export var autofill_test_force_values: bool = true
 
 const TOTAL_LEVELS: int = 3
 const LEVEL3_THROW_COUNT: int = 3
 var starting_ball_y: float
 var target_line_y: float  # Y position of the target line
 var triggers_fired: Dictionary = {}  # Track which triggers have fired this throw
-var current_level: int = 1
-var level3_current_throw_index: int = 0
-var level3_forces: Array[float] = []
-var level3_forces_confirmed: bool = false
-var level3_markers: Array[Label] = []
-var level3_auto_sequence_running: bool = false
-var level3_hit_registered_this_throw: bool = false
-var camera_home_position: Vector2 = Vector2.ZERO
 var camera_shake_controller: CameraShakeController
+var camera_follow_controller
 var force_outline_renderer: ForceOutlineRenderer
 var target_ring_controller
 var height_indicator_controller
 var throw_state_controller
 var peak_trigger_evaluator
 var ball_state_legend_controller
+var level_progression_controller
+var level3_sequence_controller
+var level_ui_controller
 
 func _get_active_target_distance_px() -> float:
 	if target_distances_px.is_empty():
 		return 232.69947052002
 	var clamped_index: int = clampi(active_target_index, 0, target_distances_px.size() - 1)
 	return max(target_distances_px[clamped_index], 0.0)
+
+func _current_level() -> int:
+	if level_progression_controller:
+		return level_progression_controller.get_current_level()
+	return 1
 
 func _ready():
 	var default_ball_position := ball.global_position
@@ -99,7 +105,25 @@ func _ready():
 	apply_forces_button.pressed.connect(_on_apply_level3_forces_pressed)
 	
 	force_input.text = "700"
-	camera_home_position = camera.global_position
+	
+	level_progression_controller = LevelProgressionControllerScript.new()
+	level_progression_controller.setup(TOTAL_LEVELS)
+	level3_sequence_controller = Level3SequenceControllerScript.new()
+	level_ui_controller = LevelUiControllerScript.new()
+	level_ui_controller.setup(
+		self,
+		force_input,
+		throw_button,
+		next_level_button,
+		formula_label,
+		level_label,
+		level3_forces_panel,
+		force_input_1,
+		force_input_2,
+		force_input_3,
+		apply_forces_button,
+		target_distance_label
+	)
 	
 	height_indicator_controller = HeightIndicatorControllerScript.new()
 	height_indicator_controller.setup(
@@ -136,6 +160,13 @@ func _ready():
 		hand_position_y,
 		starting_ball_y,
 		force_red_fade_smooth_speed
+	)
+	camera_follow_controller = CameraFollowControllerScript.new()
+	camera_follow_controller.setup(
+		camera,
+		ball,
+		throw_state_controller,
+		camera_follow_smooth_speed
 	)
 	peak_trigger_evaluator = PeakTriggerEvaluatorScript.new()
 	ball_state_legend_controller = BallStateLegendControllerScript.new()
@@ -174,7 +205,8 @@ func _physics_process(_delta):
 			if height_indicator_controller:
 				height_indicator_controller.reset()
 	
-	_update_camera_follow(_delta)
+	if camera_follow_controller:
+		camera_follow_controller.update(_delta)
 	_update_force_outline_visual()
 		
 func _on_throw_button_pressed():
@@ -182,26 +214,26 @@ func _on_throw_button_pressed():
 		return
 	
 	var force_value: float = 0.0
-	if current_level == 1:
+	if _current_level() == 1:
 		force_value = _calculate_required_impulse(_get_active_target_distance_px())
-	elif current_level == 3:
-		if not level3_forces_confirmed:
+	elif _current_level() == 3:
+		if not level3_sequence_controller or not level3_sequence_controller.forces_confirmed:
 			_professor_say("Профессор: сначала введите и примените три силы.")
 			return
-		if level3_auto_sequence_running:
+		if level3_sequence_controller.auto_sequence_running:
 			return
-		if level3_current_throw_index >= LEVEL3_THROW_COUNT:
+		if level3_sequence_controller.is_finished():
 			_professor_say("Профессор: все три броска уже выполнены.")
 			return
-		if level3_current_throw_index >= level3_forces.size():
+		if not level3_sequence_controller.can_start_sequence():
 			_professor_say("Профессор: не хватает значений силы для серии.")
 			return
-		level3_auto_sequence_running = true
-		throw_button.disabled = true
+		level3_sequence_controller.start_sequence()
+		level_ui_controller.set_throw_button_disabled(true)
 		await _run_level3_auto_sequence()
-		level3_auto_sequence_running = false
-		if current_level == 3 and level3_current_throw_index < LEVEL3_THROW_COUNT:
-			throw_button.disabled = false
+		level3_sequence_controller.stop_sequence()
+		if _current_level() == 3 and not level3_sequence_controller.is_finished():
+			level_ui_controller.set_throw_button_disabled(false)
 		return
 	elif force_input and force_input.text != "":
 		if not force_input.text.is_valid_float():
@@ -283,10 +315,10 @@ func _check_peak_triggers(ball_center_y: float):
 	if result.get("on_line_triggered", false):
 		var message := "ТРИГГЕР 3: попадание в цель (dist=%.2f px)" % result.get("hit_distance", INF)
 		print(message)
-		if current_level == 3:
+		if _current_level() == 3:
 			_handle_level3_hit(message)
-		elif current_level < TOTAL_LEVELS:
-			next_level_button.visible = true
+		elif _current_level() < TOTAL_LEVELS:
+			level_ui_controller.show_next_level_button(true)
 			_professor_say("Профессор: " + message + ". Нажмите «Перейти на следующий уровень».")
 		else:
 			_professor_say("Профессор: " + message + ". Все уровни пройдены!")
@@ -296,77 +328,55 @@ func _check_peak_triggers(ball_center_y: float):
 func _on_next_level_button_pressed() -> void:
 	if throw_state_controller and throw_state_controller.is_throw_active():
 		return
-	if current_level >= TOTAL_LEVELS:
+	if not level_progression_controller or not level_progression_controller.can_go_next():
 		return
-	current_level += 1
-	next_level_button.visible = false
+	level_progression_controller.go_next()
+	level_ui_controller.show_next_level_button(false)
 	triggers_fired.clear()
 	if height_indicator_controller:
 		height_indicator_controller.reset()
 	_apply_level_state()
-	if current_level == 3:
+	if _current_level() == 3 and autofill_test_force_values:
+		_professor_say("Профессор: уровень 3. Тестовые силы подставлены автоматически, можно сразу нажимать «Бросить».")
+	elif _current_level() == 3:
 		_professor_say("Профессор: уровень 3. Введите три силы, нажмите «Применить 3 силы», затем бросайте по очереди в цели 1/3, 2/3 и 3/3.")
 	else:
-		_professor_say("Профессор: уровень %d. Теперь рассчитайте силу и бросайте." % current_level)
+		_professor_say("Профессор: уровень %d. Теперь рассчитайте силу и бросайте." % _current_level())
 
 func _apply_level_state() -> void:
-	level_label.text = "Уровень %d/%d" % [current_level, TOTAL_LEVELS]
-	next_level_button.visible = false
+	if level_ui_controller:
+		level_ui_controller.apply_level_state(_current_level(), TOTAL_LEVELS)
 	
-	if current_level == 1:
-		force_input.visible = false
-		formula_label.visible = false
-		level3_forces_panel.visible = false
-		throw_button.disabled = false
+	if _current_level() == 1:
 		active_target_index = 0
+	elif _current_level() == 2:
+		active_target_index = min(1, target_distances_px.size() - 1)
 	else:
-		if current_level == 2:
-			force_input.visible = true
-			force_input.clear()
-			formula_label.visible = true
-			level3_forces_panel.visible = false
-			throw_button.disabled = false
-			active_target_index = min(1, target_distances_px.size() - 1)
-		else:
-			force_input.visible = false
-			formula_label.visible = true
-			level3_forces_panel.visible = true
-			_reset_level3_state()
+		_reset_level3_state()
 	
 	_refresh_target_visual()
 	_update_level3_markers()
 	_update_formula_text()
+	_apply_test_force_defaults_if_needed()
 
 func _on_apply_level3_forces_pressed() -> void:
-	if current_level != 3:
+	if _current_level() != 3:
 		return
 	
-	var parsed_forces: Array[float] = []
-	var fields: Array[LineEdit] = [force_input_1, force_input_2, force_input_3]
-	for i in range(fields.size()):
-		var text_value: String = fields[i].text.strip_edges()
-		if text_value.is_empty() or not text_value.is_valid_float():
-			_professor_say("Профессор: сила %d должна быть числом." % (i + 1))
-			return
-		var value: float = float(text_value)
-		if value <= 0.0:
-			_professor_say("Профессор: сила %d должна быть больше нуля." % (i + 1))
-			return
-		parsed_forces.append(value)
-	
-	level3_forces = parsed_forces
-	level3_forces_confirmed = true
-	throw_button.disabled = false
-	force_input_1.editable = false
-	force_input_2.editable = false
-	force_input_3.editable = false
-	apply_forces_button.disabled = true
+	var result: Dictionary = level3_sequence_controller.validate_and_apply_forces(
+		level_ui_controller.get_level3_force_values()
+	)
+	if not result.get("ok", false):
+		_professor_say("Профессор: %s" % result.get("error", "Ошибка ввода сил."))
+		return
+	level_ui_controller.lock_level3_inputs()
+	level_ui_controller.set_throw_button_disabled(false)
 	_professor_say("Профессор: силы сохранены. Бросайте в цель 1/3.")
 
 func _handle_level3_hit(message: String) -> void:
-	level3_hit_registered_this_throw = true
-	var completed_throw: int = level3_current_throw_index + 1
-	if completed_throw < LEVEL3_THROW_COUNT:
+	level3_sequence_controller.register_hit()
+	var completed_throw: int = level3_sequence_controller.get_current_throw_number()
+	if completed_throw < level3_sequence_controller.get_throw_count():
 		_professor_say(
 			"Профессор: %s. Выполнено %d/3. Ждём возврата мяча, затем автозапуск следующего броска."
 			% [message, completed_throw]
@@ -375,19 +385,11 @@ func _handle_level3_hit(message: String) -> void:
 		_professor_say("Профессор: " + message + ". Выполнено 3/3, ожидаю завершение серии.")
 
 func _reset_level3_state() -> void:
-	level3_current_throw_index = 0
-	level3_forces.clear()
-	level3_forces_confirmed = false
-	level3_auto_sequence_running = false
-	level3_hit_registered_this_throw = false
-	throw_button.disabled = true
-	force_input_1.clear()
-	force_input_2.clear()
-	force_input_3.clear()
-	force_input_1.editable = true
-	force_input_2.editable = true
-	force_input_3.editable = true
-	apply_forces_button.disabled = false
+	if level3_sequence_controller:
+		level3_sequence_controller.reset_state()
+	if level_ui_controller:
+		level_ui_controller.reset_level3_inputs()
+		level_ui_controller.set_throw_button_disabled(true)
 
 func _refresh_target_visual() -> void:
 	target_line_y = starting_ball_y - _get_current_target_distance_px()
@@ -404,12 +406,12 @@ func _refresh_target_visual() -> void:
 			target_hit_color
 		)
 	var target_distance_m: float = _get_current_target_distance_px() / pixels_per_meter
-	target_distance_label.text = "%.2f м" % target_distance_m
-	target_distance_label.global_position = Vector2(_get_target_x() + 28.0, target_line_y - 18.0)
+	if level_ui_controller:
+		level_ui_controller.set_target_distance(target_distance_m, _get_target_x(), target_line_y)
 
 func _get_current_target_distance_px() -> float:
-	if current_level == 3:
-		return _get_level3_target_distance_px(level3_current_throw_index)
+	if _current_level() == 3 and level3_sequence_controller:
+		return _get_level3_target_distance_px(level3_sequence_controller.current_throw_index)
 	return _get_active_target_distance_px()
 
 func _get_level3_target_distance_px(index: int) -> float:
@@ -420,72 +422,53 @@ func _get_level3_target_distance_px(index: int) -> float:
 	return max(level3_target_distances_px[clamped_index], 0.0)
 
 func _update_level3_markers() -> void:
-	if current_level != 3:
-		for marker in level3_markers:
-			marker.visible = false
+	if not level_ui_controller or not level3_sequence_controller:
 		return
-	
-	_ensure_level3_markers()
-	for i in range(level3_markers.size()):
-		var distance_px: float = _get_level3_target_distance_px(i)
-		var distance_m: float = distance_px / pixels_per_meter
-		var marker := level3_markers[i]
-		marker.visible = true
-		marker.text = "● %.2f м" % distance_m
-		marker.global_position = Vector2(_get_target_x() + 34.0, starting_ball_y - distance_px - 12.0)
-		if i < level3_current_throw_index:
-			marker.modulate = Color(0.3, 1.0, 0.3, 0.95)
-		elif i == level3_current_throw_index:
-			marker.modulate = Color(0.2, 0.7, 1.0, 1.0)
-		else:
-			marker.modulate = Color(1.0, 1.0, 1.0, 0.55)
-
-func _ensure_level3_markers() -> void:
-	if level3_markers.size() == LEVEL3_THROW_COUNT:
-		return
-	for marker in level3_markers:
-		marker.queue_free()
-	level3_markers.clear()
-	for _i in range(LEVEL3_THROW_COUNT):
-		var marker := Label.new()
-		marker.visible = false
-		add_child(marker)
-		level3_markers.append(marker)
+	level_ui_controller.update_level3_markers(
+		_current_level() == 3,
+		level3_sequence_controller.current_throw_index,
+		_get_target_x(),
+		starting_ball_y,
+		level3_target_distances_px,
+		pixels_per_meter
+	)
 
 func _update_formula_text() -> void:
-	if current_level == 1:
+	if not level_ui_controller:
 		return
-	if current_level == 2:
+	if _current_level() == 1:
+		return
+	if _current_level() == 2:
 		var target_distance_m: float = _get_current_target_distance_px() / pixels_per_meter
-		formula_label.text = "Формула: J = m * sqrt(2gh)\nДля цели: h = %.2f м" % target_distance_m
+		level_ui_controller.update_formula_for_level2(target_distance_m)
 		return
 	var h1: float = _get_level3_target_distance_px(0) / pixels_per_meter
 	var h2: float = _get_level3_target_distance_px(1) / pixels_per_meter
 	var h3: float = _get_level3_target_distance_px(2) / pixels_per_meter
-	formula_label.text = "Формула: J = m * sqrt(2gh)\nЦели: h1=%.2f м, h2=%.2f м, h3=%.2f м" % [h1, h2, h3]
+	level_ui_controller.update_formula_for_level3(h1, h2, h3)
 
 func _run_level3_auto_sequence() -> void:
-	while current_level == 3 and level3_current_throw_index < LEVEL3_THROW_COUNT:
-		if level3_current_throw_index >= level3_forces.size():
+	while _current_level() == 3 and level3_sequence_controller and not level3_sequence_controller.is_finished():
+		if level3_sequence_controller.current_throw_index >= level3_sequence_controller.forces.size():
 			_professor_say("Профессор: не хватает введённых сил для продолжения.")
 			return
-		var throw_number: int = level3_current_throw_index + 1
-		level3_hit_registered_this_throw = false
+		var throw_number: int = level3_sequence_controller.get_current_throw_number()
+		level3_sequence_controller.mark_throw_started()
 		_refresh_target_visual()
 		_update_level3_markers()
 		_professor_say("Профессор: серия запущена. Бросок %d/3." % throw_number)
-		await _start_throw_with_force(level3_forces[level3_current_throw_index])
+		await _start_throw_with_force(level3_sequence_controller.get_current_force())
 		await _wait_until_ball_returns_to_hand()
-		if current_level != 3:
+		if _current_level() != 3:
 			return
-		if not level3_hit_registered_this_throw:
+		if not level3_sequence_controller.was_hit_this_throw():
 			_professor_say("Профессор: промах на броске %d/3. Исправьте силы и нажмите «Бросить» снова." % throw_number)
 			return
-		level3_current_throw_index += 1
+		level3_sequence_controller.complete_current_throw()
 	
-	if current_level == 3 and level3_current_throw_index >= LEVEL3_THROW_COUNT:
-		throw_button.disabled = true
-		level3_forces_panel.visible = false
+	if _current_level() == 3 and level3_sequence_controller and level3_sequence_controller.is_finished():
+		level_ui_controller.set_throw_button_disabled(true)
+		level_ui_controller.hide_level3_panel()
 		_update_level3_markers()
 		_professor_say("Профессор: серия из трёх попаданий завершена. Все уровни пройдены!")
 
@@ -520,6 +503,39 @@ func _calculate_required_impulse(distance_px: float) -> float:
 		ball_mass = max(ball.mass, 0.001)
 	return ball_mass * speed_px
 
+func _apply_test_force_defaults_if_needed() -> void:
+	if not autofill_test_force_values or not level_ui_controller:
+		return
+	
+	if _current_level() == 1:
+		var level1_force := _calculate_required_impulse(_get_active_target_distance_px())
+		level_ui_controller.set_force_input_value(_format_force_value(level1_force))
+		return
+	
+	if _current_level() == 2:
+		var level2_force := _calculate_required_impulse(_get_active_target_distance_px())
+		level_ui_controller.set_force_input_value(_format_force_value(level2_force))
+		return
+	
+	var f1: float = _calculate_required_impulse(_get_level3_target_distance_px(0))
+	var f2: float = _calculate_required_impulse(_get_level3_target_distance_px(1))
+	var f3: float = _calculate_required_impulse(_get_level3_target_distance_px(2))
+	level_ui_controller.set_level3_force_values(
+		_format_force_value(f1),
+		_format_force_value(f2),
+		_format_force_value(f3)
+	)
+	
+	var result: Dictionary = level3_sequence_controller.validate_and_apply_forces(
+		level_ui_controller.get_level3_force_values()
+	)
+	if result.get("ok", false):
+		level_ui_controller.lock_level3_inputs()
+		level_ui_controller.set_throw_button_disabled(false)
+
+func _format_force_value(value: float) -> String:
+	return "%.2f" % value
+
 func _professor_say(text: String) -> void:
 	if not professor_dialog_label:
 		return
@@ -534,15 +550,6 @@ func _update_camera_shake(delta: float):
 	"""Update camera shake effect each frame"""
 	if camera_shake_controller:
 		camera_shake_controller.update(delta)
-
-func _update_camera_follow(delta: float) -> void:
-	if not camera:
-		return
-	var target_position: Vector2 = camera_home_position
-	if throw_state_controller and throw_state_controller.is_throw_active() and ball:
-		target_position = ball.global_position
-	var blend: float = clamp(delta * max(camera_follow_smooth_speed, 0.01), 0.0, 1.0)
-	camera.global_position = camera.global_position.lerp(target_position, blend)
 
 func _get_ball_radius_px() -> float:
 	# 1) Prefer collision radius (physics-accurate)
