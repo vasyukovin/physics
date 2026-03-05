@@ -58,6 +58,7 @@ const BallScene = preload("res://Ball/ball.tscn")
 @export_range(0.2, 0.49, 0.01) var force_outline_half_arc_ratio: float = 0.25
 @export var force_red_fade_smooth_speed: float = 7.0
 @export var level3_target_distances_px: PackedFloat32Array = PackedFloat32Array([380.0, 460.0, 540.0])
+@export var camera_follow_smooth_speed: float = 6.0
 
 const TOTAL_LEVELS: int = 3
 const LEVEL3_THROW_COUNT: int = 3
@@ -69,6 +70,9 @@ var level3_current_throw_index: int = 0
 var level3_forces: Array[float] = []
 var level3_forces_confirmed: bool = false
 var level3_markers: Array[Label] = []
+var level3_auto_sequence_running: bool = false
+var level3_hit_registered_this_throw: bool = false
+var camera_home_position: Vector2 = Vector2.ZERO
 var camera_shake_controller: CameraShakeController
 var force_outline_renderer: ForceOutlineRenderer
 var target_ring_controller
@@ -95,6 +99,7 @@ func _ready():
 	apply_forces_button.pressed.connect(_on_apply_level3_forces_pressed)
 	
 	force_input.text = "700"
+	camera_home_position = camera.global_position
 	
 	height_indicator_controller = HeightIndicatorControllerScript.new()
 	height_indicator_controller.setup(
@@ -169,14 +174,12 @@ func _physics_process(_delta):
 			if height_indicator_controller:
 				height_indicator_controller.reset()
 	
+	_update_camera_follow(_delta)
 	_update_force_outline_visual()
 		
 func _on_throw_button_pressed():
 	if throw_state_controller and throw_state_controller.is_throw_active():
 		return
-	
-	triggers_fired.clear()  # Reset triggers for new throw
-	_professor_say("Профессор: наблюдаю за траекторией...")
 	
 	var force_value: float = 0.0
 	if current_level == 1:
@@ -185,10 +188,21 @@ func _on_throw_button_pressed():
 		if not level3_forces_confirmed:
 			_professor_say("Профессор: сначала введите и примените три силы.")
 			return
-		if level3_current_throw_index >= level3_forces.size():
+		if level3_auto_sequence_running:
+			return
+		if level3_current_throw_index >= LEVEL3_THROW_COUNT:
 			_professor_say("Профессор: все три броска уже выполнены.")
 			return
-		force_value = level3_forces[level3_current_throw_index]
+		if level3_current_throw_index >= level3_forces.size():
+			_professor_say("Профессор: не хватает значений силы для серии.")
+			return
+		level3_auto_sequence_running = true
+		throw_button.disabled = true
+		await _run_level3_auto_sequence()
+		level3_auto_sequence_running = false
+		if current_level == 3 and level3_current_throw_index < LEVEL3_THROW_COUNT:
+			throw_button.disabled = false
+		return
 	elif force_input and force_input.text != "":
 		if not force_input.text.is_valid_float():
 			_professor_say("Профессор: введите число в поле силы.")
@@ -197,14 +211,8 @@ func _on_throw_button_pressed():
 	else:
 		force_value = 500.0
 	
-	if throw_state_controller:
-		throw_state_controller.begin_throw_prep()
-	
-	await get_tree().process_frame
-	
-	if throw_state_controller:
-		throw_state_controller.launch_throw(force_value)
-	_update_force_outline_visual()
+	_professor_say("Профессор: наблюдаю за траекторией...")
+	await _start_throw_with_force(force_value)
 
 func _setup_force_outline() -> void:
 	force_outline_renderer = ForceOutlineRenderer.new()
@@ -356,24 +364,22 @@ func _on_apply_level3_forces_pressed() -> void:
 	_professor_say("Профессор: силы сохранены. Бросайте в цель 1/3.")
 
 func _handle_level3_hit(message: String) -> void:
+	level3_hit_registered_this_throw = true
 	var completed_throw: int = level3_current_throw_index + 1
-	if level3_current_throw_index < LEVEL3_THROW_COUNT - 1:
-		level3_current_throw_index += 1
-		_refresh_target_visual()
-		_update_level3_markers()
+	if completed_throw < LEVEL3_THROW_COUNT:
 		_professor_say(
-			"Профессор: %s. Выполнено %d/3. Дождитесь возврата шара и бросайте в цель %d/3."
-			% [message, completed_throw, level3_current_throw_index + 1]
+			"Профессор: %s. Выполнено %d/3. Ждём возврата мяча, затем автозапуск следующего броска."
+			% [message, completed_throw]
 		)
 	else:
-		throw_button.disabled = true
-		level3_forces_panel.visible = false
-		_professor_say("Профессор: " + message + ". Выполнено 3/3. Все уровни пройдены!")
+		_professor_say("Профессор: " + message + ". Выполнено 3/3, ожидаю завершение серии.")
 
 func _reset_level3_state() -> void:
 	level3_current_throw_index = 0
 	level3_forces.clear()
 	level3_forces_confirmed = false
+	level3_auto_sequence_running = false
+	level3_hit_registered_this_throw = false
 	throw_button.disabled = true
 	force_input_1.clear()
 	force_input_2.clear()
@@ -458,6 +464,48 @@ func _update_formula_text() -> void:
 	var h3: float = _get_level3_target_distance_px(2) / pixels_per_meter
 	formula_label.text = "Формула: J = m * sqrt(2gh)\nЦели: h1=%.2f м, h2=%.2f м, h3=%.2f м" % [h1, h2, h3]
 
+func _run_level3_auto_sequence() -> void:
+	while current_level == 3 and level3_current_throw_index < LEVEL3_THROW_COUNT:
+		if level3_current_throw_index >= level3_forces.size():
+			_professor_say("Профессор: не хватает введённых сил для продолжения.")
+			return
+		var throw_number: int = level3_current_throw_index + 1
+		level3_hit_registered_this_throw = false
+		_refresh_target_visual()
+		_update_level3_markers()
+		_professor_say("Профессор: серия запущена. Бросок %d/3." % throw_number)
+		await _start_throw_with_force(level3_forces[level3_current_throw_index])
+		await _wait_until_ball_returns_to_hand()
+		if current_level != 3:
+			return
+		if not level3_hit_registered_this_throw:
+			_professor_say("Профессор: промах на броске %d/3. Исправьте силы и нажмите «Бросить» снова." % throw_number)
+			return
+		level3_current_throw_index += 1
+	
+	if current_level == 3 and level3_current_throw_index >= LEVEL3_THROW_COUNT:
+		throw_button.disabled = true
+		level3_forces_panel.visible = false
+		_update_level3_markers()
+		_professor_say("Профессор: серия из трёх попаданий завершена. Все уровни пройдены!")
+
+func _start_throw_with_force(force_value: float) -> void:
+	triggers_fired.clear()  # Reset triggers for new throw
+	if throw_state_controller:
+		throw_state_controller.begin_throw_prep()
+	await get_tree().process_frame
+	if throw_state_controller:
+		throw_state_controller.launch_throw(force_value)
+	_update_force_outline_visual()
+
+func _wait_until_ball_returns_to_hand() -> void:
+	while true:
+		await get_tree().process_frame
+		if not throw_state_controller:
+			return
+		if not throw_state_controller.is_throw_active() and ball and ball.freeze:
+			return
+
 func _get_target_x() -> float:
 	var target_x: float = ball.global_position.x
 	if player_sprite:
@@ -486,6 +534,15 @@ func _update_camera_shake(delta: float):
 	"""Update camera shake effect each frame"""
 	if camera_shake_controller:
 		camera_shake_controller.update(delta)
+
+func _update_camera_follow(delta: float) -> void:
+	if not camera:
+		return
+	var target_position: Vector2 = camera_home_position
+	if throw_state_controller and throw_state_controller.is_throw_active() and ball:
+		target_position = ball.global_position
+	var blend: float = clamp(delta * max(camera_follow_smooth_speed, 0.01), 0.0, 1.0)
+	camera.global_position = camera.global_position.lerp(target_position, blend)
 
 func _get_ball_radius_px() -> float:
 	# 1) Prefer collision radius (physics-accurate)
