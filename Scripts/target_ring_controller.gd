@@ -1,6 +1,8 @@
 extends RefCounted
 class_name TargetRingController
 
+const RING_TEXTURE := preload("res://Assets/ring_gray.png")
+
 var host: Node
 var target_sprite: Sprite2D
 var tolerance_px: float = 10.0
@@ -33,10 +35,23 @@ func setup(
 	
 	target_sprite.visible = true
 	target_sprite.global_position = Vector2(target_x, target_line_y)
-	target_sprite.texture = _make_ring_texture(ring_radius_px, ring_line_width_px)
 	target_sprite.centered = true
 	target_sprite.material = null
-	target_sprite.scale = Vector2.ONE
+	
+	if RING_TEXTURE:
+		target_sprite.texture = RING_TEXTURE
+		var tex_size: Vector2 = RING_TEXTURE.get_size()
+		var max_side: float = maxf(tex_size.x, tex_size.y)
+		if max_side > 0.0:
+			var desired_diameter: float = ring_radius_px * 2.0
+			var scale_value: float = desired_diameter / max_side
+			target_sprite.scale = Vector2.ONE * scale_value
+		else:
+			target_sprite.scale = Vector2.ONE
+	else:
+		target_sprite.texture = _make_ring_texture(ring_radius_px, ring_line_width_px)
+		target_sprite.scale = Vector2.ONE
+	
 	target_sprite.modulate = Color(1, 1, 1, ring_idle_alpha)
 	target_sprite.z_index = 10
 
@@ -52,17 +67,19 @@ func play_hit_fx() -> void:
 	if not target_sprite or not host:
 		return
 	
+	var base_scale := target_sprite.scale
+	
 	_ensure_add_material(target_sprite)
 	target_sprite.modulate = hit_color
 	
 	var tween := host.create_tween()
-	tween.tween_property(target_sprite, "scale", Vector2.ONE * 1.08, 0.12).from(Vector2.ONE)
-	tween.tween_property(target_sprite, "scale", Vector2.ONE, 0.18)
+	tween.tween_property(target_sprite, "scale", base_scale * 1.08, 0.12).from(base_scale)
+	tween.tween_property(target_sprite, "scale", base_scale, 0.18)
 	tween.parallel().tween_property(target_sprite, "modulate:a", 0.15, 0.45).from(1.0)
 	tween.tween_callback(func():
 		target_sprite.material = null
 		target_sprite.modulate = Color(1, 1, 1, ring_idle_alpha)
-		target_sprite.scale = Vector2.ONE
+		target_sprite.scale = base_scale
 	)
 	
 	var flash := Sprite2D.new()
