@@ -92,13 +92,12 @@ offset_bottom = 6.0
 text = "Бросить"
 
 [node name="NextLevelButton" type="Button" parent="UI"]
-visible = false
 layout_mode = 0
-offset_left = 58.0
-offset_top = -25.0
-offset_right = 240.0
-offset_bottom = 6.0
-text = "Перейти на следующий уровень"
+offset_left = -300.0
+offset_top = -385.0
+offset_right = -170.0
+offset_bottom = -354.0
+text = "Следующий"
 
 [node name="FormulaLabel" type="Label" parent="UI"]
 layout_mode = 0
@@ -111,14 +110,13 @@ autowrap_mode = 3
 
 [node name="LevelLabel" type="Label" parent="UI"]
 layout_mode = 0
-offset_left = -21.0
-offset_top = -97.0
-offset_right = 180.0
-offset_bottom = -73.0
+offset_left = -413.0
+offset_top = -383.0
+offset_right = -212.0
+offset_bottom = -359.0
 text = "Уровень 1/3"
 
 [node name="Level3Forces" type="VBoxContainer" parent="UI"]
-visible = false
 layout_mode = 0
 offset_left = 58.0
 offset_top = -100.0
