@@ -1,8 +1,9 @@
-[gd_scene load_steps=6 format=3 uid="uid://cc8u44lwboe8l"]
+[gd_scene load_steps=7 format=3 uid="uid://cc8u44lwboe8l"]
 
 [ext_resource type="Script" uid="uid://m8ijcvnhpgc5" path="res://playground.gd" id="1_m8u5f"]
 [ext_resource type="PackedScene" uid="uid://dwffayb7mb7kt" path="res://Player/player.tscn" id="1_rupst"]
 [ext_resource type="PackedScene" uid="uid://cfwn7u670wl21" path="res://Ball/ball.tscn" id="3_is3ju"]
+[ext_resource type="Texture2D" uid="uid://bfkcudjici3eq" path="res://Assets/Professor/proff2.png" id="4_is3ju"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_professor_bubble"]
 bg_color = Color(1, 1, 1, 0.94)
@@ -31,17 +32,23 @@ position = Vector2(581, 341)
 [node name="Professor" type="Node2D" parent="."]
 position = Vector2(810, 393)
 
-[node name="ProfessorPlaceholder" type="ColorRect" parent="Professor"]
-offset_left = -28.0
-offset_top = -82.0
-offset_right = 28.0
-color = Color(0.63, 0.63, 0.63, 1)
+[node name="ProfessorSprite" type="Sprite2D" parent="Professor"]
+position = Vector2(27.999977, -72.000015)
+scale = Vector2(0.18110749, 0.18110752)
+texture = ExtResource("4_is3ju")
 
 [node name="SpeechBubble" type="PanelContainer" parent="Professor"]
-offset_left = -146.0
-offset_top = -172.0
-offset_right = 146.0
-offset_bottom = -104.0
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -74.00001
+offset_top = -194.0
+offset_right = 136.41174
+offset_bottom = -145.0
+grow_horizontal = 2
+grow_vertical = 0
 theme_override_styles/panel = SubResource("StyleBoxFlat_professor_bubble")
 
 [node name="Margin" type="MarginContainer" parent="Professor/SpeechBubble"]
@@ -55,14 +62,10 @@ theme_override_constants/margin_bottom = 8
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.08, 0.08, 0.08, 1)
+theme_override_font_sizes/font_size = 12
 text = "Профессор: ожидаю бросок."
 horizontal_alignment = 1
 autowrap_mode = 2
-
-[node name="SpeechTail" type="Polygon2D" parent="Professor"]
-position = Vector2(0, -103)
-color = Color(1, 1, 1, 0.94)
-polygon = PackedVector2Array(-12, 0, 12, 0, 0, 15)
 
 [node name="UI" type="Control" parent="."]
 layout_mode = 3
