@@ -1,7 +1,6 @@
 extends Node2D
 
 const TargetRingControllerScript = preload("res://Scripts/target_ring_controller.gd")
-const HeightIndicatorControllerScript = preload("res://Scripts/height_indicator_controller.gd")
 const ThrowStateControllerScript = preload("res://Scripts/throw_state_controller.gd")
 const PeakTriggerEvaluatorScript = preload("res://Scripts/peak_trigger_evaluator.gd")
 const BallStateLegendControllerScript = preload("res://Scripts/ball_state_legend_controller.gd")
@@ -30,16 +29,12 @@ const BallScene = preload("res://Ball/ball.tscn")
 @onready var gravity_description: Label = $UI/StateLegend/Margin/Content/GravityRow/GravityDescription
 @onready var impulse_description: Label = $UI/StateLegend/Margin/Content/ImpulseRow/ImpulseDescription
 @onready var player_sprite: Sprite2D = $Player/Sprite2D
-@onready var height_line: Line2D = $HeightIndicator
-@onready var height_label: Label = $HeightLabel
 @onready var target_height_line: Sprite2D = $TargetHeightLine
-@onready var target_distance_label: Label = $TargetDistanceLabel
 @onready var camera: Camera2D = $Camera2D
 @onready var professor_dialog_label: Label = $Professor/SpeechBubble/Margin/SpeechText
 
 @export var hand_y_offset: float = 380.0
 @export var pixels_per_meter: float = 100.0  # Conversion factor: 100 pixels = 1 meter
-@export var line_x_offset: float = 50.0  # Distance from ball to line
 @export var shake_intensity: float = 15.0  # How strong the shake is
 @export var shake_duration: float = 2  # How long the shake lasts (in seconds)
 @export var player_z_index: int = 0
@@ -77,7 +72,6 @@ var camera_shake_controller: CameraShakeController
 var camera_follow_controller
 var force_outline_renderer: ForceOutlineRenderer
 var target_ring_controller
-var height_indicator_controller
 var throw_state_controller
 var peak_trigger_evaluator
 var ball_state_legend_controller
@@ -125,17 +119,7 @@ func _ready() -> void:
 		force_input_1,
 		force_input_2,
 		force_input_3,
-		apply_forces_button,
-		target_distance_label
-	)
-	
-	height_indicator_controller = HeightIndicatorControllerScript.new()
-	height_indicator_controller.setup(
-		self,
-		height_line,
-		height_label,
-		line_x_offset,
-		pixels_per_meter
+		apply_forces_button
 	)
 	
 	# Initialize target line from configured distances above player.
@@ -209,12 +193,9 @@ func _physics_process(_delta):
 			if throw_state_controller.is_at_peak_this_frame() and not triggers_fired.get("peak_checked", false):
 				triggers_fired["peak_checked"] = true
 				_check_peak_triggers(throw_state_controller.get_current_y())
-			_update_height_indicator()
 		
 		if throw_state_controller.did_reset_this_frame():
 			triggers_fired.clear()  # Reset triggers
-			if height_indicator_controller:
-				height_indicator_controller.reset()
 			_schedule_professor_verdict_delivery()
 	
 	if camera_follow_controller:
@@ -292,13 +273,6 @@ func _update_force_outline_visual() -> void:
 		_get_ball_radius_px()
 	)
 
-func _update_height_indicator():
-	if not throw_state_controller or not throw_state_controller.is_throw_active():
-		return
-	
-	if height_indicator_controller:
-		height_indicator_controller.update_indicator(ball.global_position, starting_ball_y)
-
 func _check_peak_triggers(ball_center_y: float):
 	if not peak_trigger_evaluator:
 		return
@@ -356,8 +330,6 @@ func _on_next_level_button_pressed() -> void:
 	level_progression_controller.go_next()
 	level_ui_controller.show_next_level_button(false)
 	triggers_fired.clear()
-	if height_indicator_controller:
-		height_indicator_controller.reset()
 	_apply_level_state()
 	if professor_dialogue_controller:
 		var autofill := _current_level() == 3 and autofill_test_force_values
@@ -375,7 +347,7 @@ func _apply_level_state() -> void:
 		_reset_level3_state()
 	
 	_refresh_target_visual()
-	_update_level3_markers()
+	_update_target_markers()
 	_update_formula_text()
 	_apply_test_force_defaults_if_needed()
 
@@ -416,10 +388,6 @@ func _refresh_target_visual() -> void:
 			target_ring_idle_alpha,
 			target_hit_color
 		)
-	var target_distance_m: float = _get_current_target_distance_px() / pixels_per_meter
-	if level_ui_controller:
-		level_ui_controller.set_target_distance(target_distance_m, _get_target_x(), target_line_y)
-
 func _get_current_target_distance_px() -> float:
 	if _current_level() == 3 and level3_sequence_controller:
 		return _get_level3_target_distance_px(level3_sequence_controller.current_throw_index)
@@ -432,16 +400,20 @@ func _get_level3_target_distance_px(index: int) -> float:
 	var clamped_index: int = clampi(index, 0, max(max_index, 0))
 	return max(level3_target_distances_px[clamped_index], 0.0)
 
-func _update_level3_markers() -> void:
-	if not level_ui_controller or not level3_sequence_controller:
+func _update_target_markers() -> void:
+	if not level_ui_controller:
 		return
-	level_ui_controller.update_level3_markers(
-		_current_level() == 3,
-		level3_sequence_controller.current_throw_index,
+	var throw_index: int = 0
+	if level3_sequence_controller:
+		throw_index = level3_sequence_controller.current_throw_index
+	level_ui_controller.update_target_markers(
+		_current_level(),
+		throw_index,
 		_get_target_x(),
 		starting_ball_y,
 		level3_target_distances_px,
-		pixels_per_meter
+		pixels_per_meter,
+		_get_current_target_distance_px()
 	)
 
 func _update_formula_text() -> void:
@@ -470,7 +442,7 @@ func _run_level3_auto_sequence() -> void:
 		var throw_number: int = level3_sequence_controller.get_current_throw_number()
 		level3_sequence_controller.mark_throw_started()
 		_refresh_target_visual()
-		_update_level3_markers()
+		_update_target_markers()
 		await _start_throw_with_force(level3_sequence_controller.get_current_force())
 		await _wait_until_ball_returns_to_hand()
 		if _current_level() != 3:
@@ -491,7 +463,7 @@ func _run_level3_auto_sequence() -> void:
 	if _current_level() == 3 and level3_sequence_controller and level3_sequence_controller.is_finished():
 		level_ui_controller.set_throw_button_disabled(true)
 		level_ui_controller.hide_level3_panel()
-		_update_level3_markers()
+		_update_target_markers()
 		if professor_dialogue_controller:
 			professor_dialogue_controller.set_series_silent(false)
 			await professor_dialogue_controller.on_series_finished(
