@@ -1,9 +1,10 @@
-[gd_scene load_steps=7 format=3 uid="uid://cc8u44lwboe8l"]
+[gd_scene load_steps=8 format=3 uid="uid://cc8u44lwboe8l"]
 
 [ext_resource type="Script" uid="uid://m8ijcvnhpgc5" path="res://playground.gd" id="1_m8u5f"]
 [ext_resource type="PackedScene" uid="uid://dwffayb7mb7kt" path="res://Player/player.tscn" id="1_rupst"]
 [ext_resource type="PackedScene" uid="uid://cfwn7u670wl21" path="res://Ball/ball.tscn" id="3_is3ju"]
 [ext_resource type="Texture2D" uid="uid://bfkcudjici3eq" path="res://Assets/Professor/proff2.png" id="4_is3ju"]
+[ext_resource type="Texture2D" uid="uid://bmun18necm50" path="res://Assets/Platform/platform.png" id="5_o00ia"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_professor_bubble"]
 bg_color = Color(1, 1, 1, 0.94)
@@ -22,6 +23,13 @@ bg_color = Color(0, 0, 0, 0)
 
 [node name="Playground" type="Node2D"]
 script = ExtResource("1_m8u5f")
+
+[node name="Floor" type="Node2D" parent="."]
+position = Vector2(710, 413)
+
+[node name="Sprite2D" type="Sprite2D" parent="Floor"]
+scale = Vector2(0.40625, 0.40625)
+texture = ExtResource("5_o00ia")
 
 [node name="Player" parent="." instance=ExtResource("1_rupst")]
 position = Vector2(582, 379)
