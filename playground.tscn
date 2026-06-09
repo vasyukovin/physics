@@ -71,7 +71,7 @@ layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.08, 0.08, 0.08, 1)
 theme_override_font_sizes/font_size = 12
-text = "Профессор: ожидаю бросок."
+text = "..."
 horizontal_alignment = 1
 autowrap_mode = 2
 

@@ -8,6 +8,7 @@ const BallStateLegendControllerScript = preload("res://Scripts/ball_state_legend
 const LevelProgressionControllerScript = preload("res://Scripts/level_progression_controller.gd")
 const Level3SequenceControllerScript = preload("res://Scripts/level3_sequence_controller.gd")
 const LevelUiControllerScript = preload("res://Scripts/level_ui_controller.gd")
+const ProfessorDialogueControllerScript = preload("res://Scripts/professor_dialogue_controller.gd")
 const CameraFollowControllerScript = preload("res://Scripts/camera_follow_controller.gd")
 const BallScene = preload("res://Ball/ball.tscn")
 
@@ -64,6 +65,8 @@ const BallScene = preload("res://Ball/ball.tscn")
 @export var level3_target_distances_px: PackedFloat32Array = PackedFloat32Array([380.0, 460.0, 540.0])
 @export var camera_follow_smooth_speed: float = 6.0
 @export var autofill_test_force_values: bool = true
+@export var professor_verdict_delay_sec: float = 0.4
+@export var professor_typewriter_enabled: bool = true
 
 const TOTAL_LEVELS: int = 3
 const LEVEL3_THROW_COUNT: int = 3
@@ -81,6 +84,7 @@ var ball_state_legend_controller
 var level_progression_controller
 var level3_sequence_controller
 var level_ui_controller
+var professor_dialogue_controller: ProfessorDialogueController
 
 func _get_active_target_distance_px() -> float:
 	if target_distances_px.is_empty():
@@ -93,7 +97,7 @@ func _current_level() -> int:
 		return level_progression_controller.get_current_level()
 	return 1
 
-func _ready():
+func _ready() -> void:
 	var default_ball_position := ball.global_position
 	starting_ball_y = default_ball_position.y
 	var hand_position_y: float = default_ball_position.y + hand_y_offset 
@@ -181,11 +185,18 @@ func _ready():
 		force_outline_blue_base,
 		force_outline_red_base
 	)
+	professor_dialogue_controller = ProfessorDialogueControllerScript.new()
+	professor_dialogue_controller.setup(
+		self,
+		professor_dialog_label,
+		professor_verdict_delay_sec,
+		professor_typewriter_enabled
+	)
 	
 	_apply_fixed_z_order()
 	_setup_force_outline()
 	_apply_level_state()
-	_professor_say("Профессор: уровень 1. Нажмите бросок, и я покажу идеальную траекторию.")
+	await professor_dialogue_controller.on_level_started(1, false)
 	
 func _physics_process(_delta):
 	# Update camera shake
@@ -204,6 +215,7 @@ func _physics_process(_delta):
 			triggers_fired.clear()  # Reset triggers
 			if height_indicator_controller:
 				height_indicator_controller.reset()
+			_schedule_professor_verdict_delivery()
 	
 	if camera_follow_controller:
 		camera_follow_controller.update(_delta)
@@ -218,15 +230,15 @@ func _on_throw_button_pressed():
 		force_value = _calculate_required_impulse(_get_active_target_distance_px())
 	elif _current_level() == 3:
 		if not level3_sequence_controller or not level3_sequence_controller.forces_confirmed:
-			_professor_say("Профессор: сначала введите и примените три силы.")
+			await professor_dialogue_controller.on_input_error("need_forces")
 			return
 		if level3_sequence_controller.auto_sequence_running:
 			return
 		if level3_sequence_controller.is_finished():
-			_professor_say("Профессор: все три броска уже выполнены.")
+			await professor_dialogue_controller.on_input_error("series_done")
 			return
 		if not level3_sequence_controller.can_start_sequence():
-			_professor_say("Профессор: не хватает значений силы для серии.")
+			await professor_dialogue_controller.on_input_error("missing_forces")
 			return
 		level3_sequence_controller.start_sequence()
 		level_ui_controller.set_throw_button_disabled(true)
@@ -237,13 +249,12 @@ func _on_throw_button_pressed():
 		return
 	elif force_input and force_input.text != "":
 		if not force_input.text.is_valid_float():
-			_professor_say("Профессор: введите число в поле силы.")
+			await professor_dialogue_controller.on_input_error("invalid_force")
 			return
 		force_value = float(force_input.text)
 	else:
 		force_value = 500.0
 	
-	_professor_say("Профессор: наблюдаю за траекторией...")
 	await _start_throw_with_force(force_value)
 
 func _setup_force_outline() -> void:
@@ -302,26 +313,38 @@ func _check_peak_triggers(ball_center_y: float):
 	)
 	
 	if result.get("below_line_triggered", false):
-		var message := "ТРИГГЕР 1: Высочайшая точка шара ниже линии"
-		print(message)
-		_professor_say("Профессор: " + message)
+		print("ТРИГГЕР 1: Высочайшая точка шара ниже линии")
+		if professor_dialogue_controller:
+			professor_dialogue_controller.queue_throw_verdict(
+				ProfessorDialogueControllerScript.ThrowOutcome.TOO_LOW
+			)
 	
 	if result.get("above_line_triggered", false):
-		var message := "ТРИГГЕР 2: Центр шара выше линии"
-		print(message)
-		_professor_say("Профессор: " + message)
+		print("ТРИГГЕР 2: Центр шара выше линии")
+		if professor_dialogue_controller:
+			professor_dialogue_controller.queue_throw_verdict(
+				ProfessorDialogueControllerScript.ThrowOutcome.TOO_HIGH
+			)
 		_start_camera_shake()  # Start earthquake effect
 	
 	if result.get("on_line_triggered", false):
-		var message := "ТРИГГЕР 3: попадание в цель (dist=%.2f px)" % result.get("hit_distance", INF)
-		print(message)
-		if _current_level() == 3:
-			_handle_level3_hit(message)
-		elif _current_level() < TOTAL_LEVELS:
-			level_ui_controller.show_next_level_button(true)
-			_professor_say("Профессор: " + message + ". Нажмите «Перейти на следующий уровень».")
-		else:
-			_professor_say("Профессор: " + message + ". Все уровни пройдены!")
+		print(
+			"ТРИГГЕР 3: попадание в цель (dist=%.2f px)" % result.get("hit_distance", INF)
+		)
+		if _is_level3_series_active():
+			level3_sequence_controller.register_hit()
+			if professor_dialogue_controller:
+				professor_dialogue_controller.clear_pending_verdict()
+		elif professor_dialogue_controller:
+			var can_go_next := _current_level() < TOTAL_LEVELS
+			var is_final_level := _current_level() >= TOTAL_LEVELS
+			professor_dialogue_controller.queue_throw_verdict(
+				ProfessorDialogueControllerScript.ThrowOutcome.HIT,
+				can_go_next,
+				is_final_level
+			)
+			if can_go_next and level_ui_controller:
+				level_ui_controller.show_next_level_button(true)
 		if target_ring_controller:
 			target_ring_controller.play_hit_fx()
 
@@ -336,12 +359,9 @@ func _on_next_level_button_pressed() -> void:
 	if height_indicator_controller:
 		height_indicator_controller.reset()
 	_apply_level_state()
-	if _current_level() == 3 and autofill_test_force_values:
-		_professor_say("Профессор: уровень 3. Тестовые силы подставлены автоматически, можно сразу нажимать «Бросить».")
-	elif _current_level() == 3:
-		_professor_say("Профессор: уровень 3. Введите три силы, нажмите «Применить 3 силы», затем бросайте по очереди в цели 1/3, 2/3 и 3/3.")
-	else:
-		_professor_say("Профессор: уровень %d. Теперь рассчитайте силу и бросайте." % _current_level())
+	if professor_dialogue_controller:
+		var autofill := _current_level() == 3 and autofill_test_force_values
+		await professor_dialogue_controller.on_level_started(_current_level(), autofill)
 
 func _apply_level_state() -> void:
 	if level_ui_controller:
@@ -367,22 +387,13 @@ func _on_apply_level3_forces_pressed() -> void:
 		level_ui_controller.get_level3_force_values()
 	)
 	if not result.get("ok", false):
-		_professor_say("Профессор: %s" % result.get("error", "Ошибка ввода сил."))
+		await professor_dialogue_controller.on_force_validation_error(
+			result.get("error", "Ошибка ввода сил.")
+		)
 		return
 	level_ui_controller.lock_level3_inputs()
 	level_ui_controller.set_throw_button_disabled(false)
-	_professor_say("Профессор: силы сохранены. Бросайте в цель 1/3.")
-
-func _handle_level3_hit(message: String) -> void:
-	level3_sequence_controller.register_hit()
-	var completed_throw: int = level3_sequence_controller.get_current_throw_number()
-	if completed_throw < level3_sequence_controller.get_throw_count():
-		_professor_say(
-			"Профессор: %s. Выполнено %d/3. Ждём возврата мяча, затем автозапуск следующего броска."
-			% [message, completed_throw]
-		)
-	else:
-		_professor_say("Профессор: " + message + ". Выполнено 3/3, ожидаю завершение серии.")
+	await professor_dialogue_controller.on_forces_applied()
 
 func _reset_level3_state() -> void:
 	if level3_sequence_controller:
@@ -448,21 +459,32 @@ func _update_formula_text() -> void:
 	level_ui_controller.update_formula_for_level3(h1, h2, h3)
 
 func _run_level3_auto_sequence() -> void:
+	if professor_dialogue_controller:
+		professor_dialogue_controller.set_series_silent(true)
 	while _current_level() == 3 and level3_sequence_controller and not level3_sequence_controller.is_finished():
 		if level3_sequence_controller.current_throw_index >= level3_sequence_controller.forces.size():
-			_professor_say("Профессор: не хватает введённых сил для продолжения.")
+			if professor_dialogue_controller:
+				professor_dialogue_controller.set_series_silent(false)
+				await professor_dialogue_controller.on_input_error("missing_force_values")
 			return
 		var throw_number: int = level3_sequence_controller.get_current_throw_number()
 		level3_sequence_controller.mark_throw_started()
 		_refresh_target_visual()
 		_update_level3_markers()
-		_professor_say("Профессор: серия запущена. Бросок %d/3." % throw_number)
 		await _start_throw_with_force(level3_sequence_controller.get_current_force())
 		await _wait_until_ball_returns_to_hand()
 		if _current_level() != 3:
+			if professor_dialogue_controller:
+				professor_dialogue_controller.set_series_silent(false)
 			return
 		if not level3_sequence_controller.was_hit_this_throw():
-			_professor_say("Профессор: промах на броске %d/3. Исправьте силы и нажмите «Бросить» снова." % throw_number)
+			if professor_dialogue_controller:
+				var miss_outcome: ProfessorDialogueController.ThrowOutcome = (
+					professor_dialogue_controller.peek_pending_outcome()
+				)
+				professor_dialogue_controller.clear_pending_verdict()
+				professor_dialogue_controller.set_series_silent(false)
+				await professor_dialogue_controller.on_series_miss(throw_number, miss_outcome)
 			return
 		level3_sequence_controller.complete_current_throw()
 	
@@ -470,7 +492,12 @@ func _run_level3_auto_sequence() -> void:
 		level_ui_controller.set_throw_button_disabled(true)
 		level_ui_controller.hide_level3_panel()
 		_update_level3_markers()
-		_professor_say("Профессор: серия из трёх попаданий завершена. Все уровни пройдены!")
+		if professor_dialogue_controller:
+			professor_dialogue_controller.set_series_silent(false)
+			await professor_dialogue_controller.on_series_finished(
+				level3_sequence_controller.get_throw_count(),
+				level3_sequence_controller.get_throw_count()
+			)
 
 func _start_throw_with_force(force_value: float) -> void:
 	triggers_fired.clear()  # Reset triggers for new throw
@@ -536,10 +563,26 @@ func _apply_test_force_defaults_if_needed() -> void:
 func _format_force_value(value: float) -> String:
 	return "%.2f" % value
 
-func _professor_say(text: String) -> void:
-	if not professor_dialog_label:
+func _is_level3_series_active() -> bool:
+	return (
+		_current_level() == 3
+		and level3_sequence_controller
+		and level3_sequence_controller.auto_sequence_running
+	)
+
+
+func _schedule_professor_verdict_delivery() -> void:
+	if not professor_dialogue_controller or not professor_dialogue_controller.has_pending_verdict():
 		return
-	professor_dialog_label.text = text
+	if _is_level3_series_active():
+		return
+	_deliver_professor_verdict.call_deferred()
+
+
+func _deliver_professor_verdict() -> void:
+	if professor_dialogue_controller:
+		await professor_dialogue_controller.deliver_pending_verdict()
+
 
 func _start_camera_shake():
 	"""Start the camera shake effect (earthquake)"""
