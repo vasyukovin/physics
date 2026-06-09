@@ -46,7 +46,7 @@ func setup(
 
 func apply_level_state(level: int, total_levels: int) -> void:
 	level_label.text = "Уровень %d/%d" % [level, total_levels]
-	next_level_button.visible = false
+	show_next_level_button(false)
 	
 	if level == 1:
 		force_input.visible = false
@@ -67,6 +67,8 @@ func apply_level_state(level: int, total_levels: int) -> void:
 
 func show_next_level_button(visible: bool) -> void:
 	next_level_button.visible = visible
+	if next_level_button.has_method("set_attention_active"):
+		next_level_button.set_attention_active(visible)
 
 func set_throw_button_disabled(disabled: bool) -> void:
 	throw_button.disabled = disabled

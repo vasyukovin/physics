@@ -1,6 +1,7 @@
-[gd_scene load_steps=8 format=3 uid="uid://cc8u44lwboe8l"]
+[gd_scene load_steps=9 format=3 uid="uid://cc8u44lwboe8l"]
 
 [ext_resource type="Script" uid="uid://m8ijcvnhpgc5" path="res://playground.gd" id="1_m8u5f"]
+[ext_resource type="Script" path="res://Scripts/next_level_button.gd" id="6_nextlvl"]
 [ext_resource type="PackedScene" uid="uid://dwffayb7mb7kt" path="res://Player/player.tscn" id="1_rupst"]
 [ext_resource type="PackedScene" uid="uid://cfwn7u670wl21" path="res://Ball/ball.tscn" id="3_is3ju"]
 [ext_resource type="Texture2D" uid="uid://bfkcudjici3eq" path="res://Assets/Professor/proff2.png" id="4_is3ju"]
@@ -105,7 +106,9 @@ offset_left = -300.0
 offset_top = -385.0
 offset_right = -170.0
 offset_bottom = -354.0
+theme_override_font_sizes/font_size = 14
 text = "Следующий"
+script = ExtResource("6_nextlvl")
 
 [node name="FormulaLabel" type="Label" parent="UI"]
 layout_mode = 0
