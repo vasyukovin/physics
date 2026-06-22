@@ -3,6 +3,7 @@ class_name LevelUiController
 
 const LEVEL3_THROW_COUNT: int = 3
 const TARGET_MARKER_COUNT: int = 3
+const TARGET_MARKER_FONT_SIZE: int = 32
 
 var host: Node2D
 var force_input: LineEdit
@@ -145,6 +146,7 @@ func _ensure_target_markers() -> void:
 	target_markers.clear()
 	for _i in range(TARGET_MARKER_COUNT):
 		var marker := Label.new()
+		marker.add_theme_font_size_override("font_size", TARGET_MARKER_FONT_SIZE)
 		marker.visible = false
 		host.add_child(marker)
 		target_markers.append(marker)
