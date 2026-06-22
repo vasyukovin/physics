@@ -13,15 +13,15 @@ const BallScene = preload("res://Ball/ball.tscn")
 @onready var ball: RigidBody2D = $Ball
 @onready var player_node: Node2D = $Player
 @onready var professor_node: Node2D = $Professor
-@onready var force_input: LineEdit = $UI/ForceInput
-@onready var throw_button: Button = $UI/ThrowButton
-@onready var next_level_button: Button = $UI/NextLevelButton
-@onready var level_label: Label = $UI/LevelLabel
-@onready var level3_forces_panel: VBoxContainer = $UI/Level3Forces
-@onready var force_input_1: LineEdit = $UI/Level3Forces/ForceInput1
-@onready var force_input_2: LineEdit = $UI/Level3Forces/ForceInput2
-@onready var force_input_3: LineEdit = $UI/Level3Forces/ForceInput3
-@onready var apply_forces_button: Button = $UI/Level3Forces/ApplyForcesButton
+@onready var force_input: LineEdit = $UILayer/UI/BottomBar/ForceInput
+@onready var throw_button: Button = $UILayer/UI/BottomBar/ThrowButton
+@onready var next_level_button: Button = $UILayer/UI/TopBar/NextLevelButton
+@onready var level_label: Label = $UILayer/UI/TopBar/LevelLabel
+@onready var level3_forces_panel: VBoxContainer = $UILayer/UI/Level3Forces
+@onready var force_input_1: LineEdit = $UILayer/UI/Level3Forces/ForceInput1
+@onready var force_input_2: LineEdit = $UILayer/UI/Level3Forces/ForceInput2
+@onready var force_input_3: LineEdit = $UILayer/UI/Level3Forces/ForceInput3
+@onready var apply_forces_button: Button = $UILayer/UI/Level3Forces/ApplyForcesButton
 @onready var player_sprite: Sprite2D = $Player/Sprite2D
 @onready var target_height_line: Sprite2D = $TargetHeightLine
 @onready var camera: Camera2D = $Camera2D
@@ -79,6 +79,25 @@ func _get_active_target_distance_px() -> float:
 	var clamped_index: int = clampi(active_target_index, 0, target_distances_px.size() - 1)
 	return max(target_distances_px[clamped_index], 0.0)
 
+func _get_character_head_global_position(character_root: Node2D) -> Vector2:
+	var sprite: Sprite2D = null
+	if character_root.has_node("Sprite2D"):
+		sprite = character_root.get_node("Sprite2D") as Sprite2D
+	elif character_root.has_node("ProfessorSprite"):
+		sprite = character_root.get_node("ProfessorSprite") as Sprite2D
+	if not sprite:
+		return character_root.global_position
+	
+	var head_y: float = sprite.global_position.y
+	if sprite.texture:
+		head_y -= sprite.texture.get_height() * sprite.scale.y * 0.5
+	return Vector2(sprite.global_position.x, head_y)
+
+func _get_camera_home_position() -> Vector2:
+	var player_head := _get_character_head_global_position(player_node)
+	var professor_head := _get_character_head_global_position(professor_node)
+	return (player_head + professor_head) * 0.5
+
 func _current_level() -> int:
 	if level_progression_controller:
 		return level_progression_controller.get_current_level()
@@ -132,7 +151,7 @@ func _ready() -> void:
 
 	camera_shake_controller = CameraShakeController.new()
 	camera_shake_controller.setup(camera, shake_intensity, shake_duration)
-	camera.global_position = (player_node.global_position + professor_node.global_position) * 0.5
+	camera.global_position = _get_camera_home_position()
 	throw_state_controller = ThrowStateControllerScript.new()
 	throw_state_controller.setup(
 		ball,
