@@ -8,7 +8,6 @@ var host: Node2D
 var force_input: LineEdit
 var throw_button: Button
 var next_level_button: Button
-var formula_label: Label
 var level_label: Label
 var level3_forces_panel: VBoxContainer
 var force_input_1: LineEdit
@@ -22,7 +21,6 @@ func setup(
 	target_force_input: LineEdit,
 	target_throw_button: Button,
 	target_next_level_button: Button,
-	target_formula_label: Label,
 	target_level_label: Label,
 	target_level3_forces_panel: VBoxContainer,
 	target_force_input_1: LineEdit,
@@ -34,7 +32,6 @@ func setup(
 	force_input = target_force_input
 	throw_button = target_throw_button
 	next_level_button = target_next_level_button
-	formula_label = target_formula_label
 	level_label = target_level_label
 	level3_forces_panel = target_level3_forces_panel
 	force_input_1 = target_force_input_1
@@ -48,18 +45,15 @@ func apply_level_state(level: int, total_levels: int) -> void:
 	
 	if level == 1:
 		force_input.visible = false
-		formula_label.visible = false
 		level3_forces_panel.visible = false
 		throw_button.disabled = false
 	elif level == 2:
 		force_input.visible = true
 		force_input.clear()
-		formula_label.visible = true
 		level3_forces_panel.visible = false
 		throw_button.disabled = false
 	else:
 		force_input.visible = false
-		formula_label.visible = true
 		level3_forces_panel.visible = true
 		throw_button.disabled = true
 
@@ -73,12 +67,6 @@ func set_throw_button_disabled(disabled: bool) -> void:
 
 func set_force_input_value(value_text: String) -> void:
 	force_input.text = value_text
-
-func update_formula_for_level2(target_distance_m: float) -> void:
-	formula_label.text = "Формула: J = m * sqrt(2gh)\nДля цели: h = %.2f м" % target_distance_m
-
-func update_formula_for_level3(h1: float, h2: float, h3: float) -> void:
-	formula_label.text = "Формула: J = m * sqrt(2gh)\nЦели: h1=%.2f м, h2=%.2f м, h3=%.2f м" % [h1, h2, h3]
 
 func get_level3_force_values() -> Array[String]:
 	return [

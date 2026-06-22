@@ -3,7 +3,6 @@ extends Node2D
 const TargetRingControllerScript = preload("res://Scripts/target_ring_controller.gd")
 const ThrowStateControllerScript = preload("res://Scripts/throw_state_controller.gd")
 const PeakTriggerEvaluatorScript = preload("res://Scripts/peak_trigger_evaluator.gd")
-const BallStateLegendControllerScript = preload("res://Scripts/ball_state_legend_controller.gd")
 const LevelProgressionControllerScript = preload("res://Scripts/level_progression_controller.gd")
 const Level3SequenceControllerScript = preload("res://Scripts/level3_sequence_controller.gd")
 const LevelUiControllerScript = preload("res://Scripts/level_ui_controller.gd")
@@ -13,21 +12,16 @@ const BallScene = preload("res://Ball/ball.tscn")
 
 @onready var ball: RigidBody2D = $Ball
 @onready var player_node: Node2D = $Player
+@onready var professor_node: Node2D = $Professor
 @onready var force_input: LineEdit = $UI/ForceInput
 @onready var throw_button: Button = $UI/ThrowButton
 @onready var next_level_button: Button = $UI/NextLevelButton
-@onready var formula_label: Label = $UI/FormulaLabel
 @onready var level_label: Label = $UI/LevelLabel
 @onready var level3_forces_panel: VBoxContainer = $UI/Level3Forces
 @onready var force_input_1: LineEdit = $UI/Level3Forces/ForceInput1
 @onready var force_input_2: LineEdit = $UI/Level3Forces/ForceInput2
 @onready var force_input_3: LineEdit = $UI/Level3Forces/ForceInput3
 @onready var apply_forces_button: Button = $UI/Level3Forces/ApplyForcesButton
-@onready var state_legend_panel: PanelContainer = $UI/StateLegend
-@onready var gravity_ball_slot: Control = $UI/StateLegend/Margin/Content/GravityRow/GravityBallSlot
-@onready var impulse_ball_slot: Control = $UI/StateLegend/Margin/Content/ImpulseRow/ImpulseBallSlot
-@onready var gravity_description: Label = $UI/StateLegend/Margin/Content/GravityRow/GravityDescription
-@onready var impulse_description: Label = $UI/StateLegend/Margin/Content/ImpulseRow/ImpulseDescription
 @onready var player_sprite: Sprite2D = $Player/Sprite2D
 @onready var target_height_line: Sprite2D = $TargetHeightLine
 @onready var camera: Camera2D = $Camera2D
@@ -74,7 +68,6 @@ var force_outline_renderer: ForceOutlineRenderer
 var target_ring_controller
 var throw_state_controller
 var peak_trigger_evaluator
-var ball_state_legend_controller
 var level_progression_controller
 var level3_sequence_controller
 var level_ui_controller
@@ -113,7 +106,6 @@ func _ready() -> void:
 		force_input,
 		throw_button,
 		next_level_button,
-		formula_label,
 		level_label,
 		level3_forces_panel,
 		force_input_1,
@@ -140,6 +132,7 @@ func _ready() -> void:
 
 	camera_shake_controller = CameraShakeController.new()
 	camera_shake_controller.setup(camera, shake_intensity, shake_duration)
+	camera.global_position = (player_node.global_position + professor_node.global_position) * 0.5
 	throw_state_controller = ThrowStateControllerScript.new()
 	throw_state_controller.setup(
 		ball,
@@ -157,18 +150,6 @@ func _ready() -> void:
 		camera_follow_smooth_speed
 	)
 	peak_trigger_evaluator = PeakTriggerEvaluatorScript.new()
-	ball_state_legend_controller = BallStateLegendControllerScript.new()
-	ball_state_legend_controller.setup(
-		state_legend_panel,
-		gravity_ball_slot,
-		impulse_ball_slot,
-		gravity_description,
-		impulse_description,
-		BallScene,
-		pixels_per_meter,
-		force_outline_blue_base,
-		force_outline_red_base
-	)
 	professor_dialogue_controller = ProfessorDialogueControllerScript.new()
 	professor_dialogue_controller.setup(
 		self,
@@ -348,7 +329,6 @@ func _apply_level_state() -> void:
 	
 	_refresh_target_visual()
 	_update_target_markers()
-	_update_formula_text()
 	_apply_test_force_defaults_if_needed()
 
 func _on_apply_level3_forces_pressed() -> void:
@@ -415,20 +395,6 @@ func _update_target_markers() -> void:
 		pixels_per_meter,
 		_get_current_target_distance_px()
 	)
-
-func _update_formula_text() -> void:
-	if not level_ui_controller:
-		return
-	if _current_level() == 1:
-		return
-	if _current_level() == 2:
-		var target_distance_m: float = _get_current_target_distance_px() / pixels_per_meter
-		level_ui_controller.update_formula_for_level2(target_distance_m)
-		return
-	var h1: float = _get_level3_target_distance_px(0) / pixels_per_meter
-	var h2: float = _get_level3_target_distance_px(1) / pixels_per_meter
-	var h3: float = _get_level3_target_distance_px(2) / pixels_per_meter
-	level_ui_controller.update_formula_for_level3(h1, h2, h3)
 
 func _run_level3_auto_sequence() -> void:
 	if professor_dialogue_controller:

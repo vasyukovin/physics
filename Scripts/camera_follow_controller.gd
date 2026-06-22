@@ -25,6 +25,6 @@ func update(delta: float) -> void:
 		return
 	var target_position: Vector2 = home_position
 	if throw_state_controller and throw_state_controller.is_throw_active() and ball:
-		target_position = ball.global_position
+		target_position = Vector2(home_position.x, ball.global_position.y)
 	var blend: float = clamp(delta * smooth_speed, 0.0, 1.0)
 	camera.global_position = camera.global_position.lerp(target_position, blend)
