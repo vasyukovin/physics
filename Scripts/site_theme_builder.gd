@@ -72,6 +72,8 @@ static func _apply_line_edit_styles(theme: Theme, font_regular: Font) -> void:
 	theme.set_font("font", "LineEdit", font_regular)
 	theme.set_font_size("font_size", "LineEdit", 20)
 	theme.set_color("font_color", "LineEdit", SiteColors.TEXT)
+	theme.set_color("font_uneditable_color", "LineEdit", SiteColors.TEXT)
+	theme.set_color("font_readonly_color", "LineEdit", SiteColors.TEXT)
 	theme.set_color("font_placeholder_color", "LineEdit", SiteColors.TEXT_MUTED)
 	theme.set_color("font_selected_color", "LineEdit", SiteColors.WHITE)
 	theme.set_color("selection_color", "LineEdit", SiteColors.PRIMARY)
@@ -93,7 +95,8 @@ static func _apply_line_edit_styles(theme: Theme, font_regular: Font) -> void:
 	theme.set_stylebox("focus", "LineEdit", focus)
 
 	var read_only := normal.duplicate()
-	read_only.bg_color = SiteColors.BACKGROUND
+	read_only.bg_color = SiteColors.WHITE
+	read_only.border_color = SiteColors.BORDER_LIGHT
 	theme.set_stylebox("read_only", "LineEdit", read_only)
 
 

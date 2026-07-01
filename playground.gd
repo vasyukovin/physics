@@ -419,7 +419,8 @@ func _update_target_markers() -> void:
 		starting_ball_y,
 		level3_target_distances_px,
 		pixels_per_meter,
-		_get_current_target_distance_px()
+		_get_current_target_distance_px(),
+		target_line_y
 	)
 
 func _run_level3_auto_sequence() -> void:
@@ -516,13 +517,6 @@ func _apply_test_force_defaults_if_needed() -> void:
 		_format_force_value(f2),
 		_format_force_value(f3)
 	)
-	
-	var result: Dictionary = level3_sequence_controller.validate_and_apply_forces(
-		level_ui_controller.get_level3_force_values()
-	)
-	if result.get("ok", false):
-		level_ui_controller.lock_level3_inputs()
-		level_ui_controller.set_throw_button_disabled(false)
 
 func _format_force_value(value: float) -> String:
 	return "%.2f" % value

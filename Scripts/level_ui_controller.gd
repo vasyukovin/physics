@@ -3,7 +3,12 @@ class_name LevelUiController
 
 const LEVEL3_THROW_COUNT: int = 3
 const TARGET_MARKER_COUNT: int = 3
-const TARGET_MARKER_FONT_SIZE: int = 32
+const TARGET_MARKER_FONT_SIZE: int = 18
+const TARGET_MARKER_OFFSET_X: float = 34.0
+
+const MARKER_COLOR_ACTIVE := Color(0.32, 0.32, 0.32, 0.85)
+const MARKER_COLOR_DONE := Color(0.19, 0.67, 0.12, 0.6)
+const MARKER_COLOR_UPCOMING := Color(0.81, 0.81, 0.81, 0.75)
 
 var host: Node2D
 var force_input: LineEdit
@@ -106,7 +111,8 @@ func update_target_markers(
 	starting_ball_y: float,
 	level3_distances_px: PackedFloat32Array,
 	pixels_per_meter: float,
-	single_target_distance_px: float
+	single_target_distance_px: float,
+	target_line_y: float
 ) -> void:
 	_ensure_target_markers()
 	if level == 3:
@@ -114,15 +120,16 @@ func update_target_markers(
 			var distance_px: float = _get_distance_px(level3_distances_px, i)
 			var distance_m: float = distance_px / max(pixels_per_meter, 1.0)
 			var marker := target_markers[i]
+			var marker_line_y: float = starting_ball_y - distance_px
 			marker.visible = true
-			marker.text = "● %.2f м" % distance_m
-			marker.global_position = Vector2(target_x + 34.0, starting_ball_y - distance_px - 12.0)
+			_set_marker_text(marker, distance_m)
+			_place_marker(marker, target_x, marker_line_y)
 			if i < current_throw_index:
-				marker.modulate = SiteColors.GREEN
+				marker.add_theme_color_override("font_color", MARKER_COLOR_DONE)
 			elif i == current_throw_index:
-				marker.modulate = SiteColors.BLUE
+				marker.add_theme_color_override("font_color", MARKER_COLOR_ACTIVE)
 			else:
-				marker.modulate = Color(SiteColors.TEXT, 0.45)
+				marker.add_theme_color_override("font_color", MARKER_COLOR_UPCOMING)
 		return
 	
 	for i in range(target_markers.size()):
@@ -131,12 +138,19 @@ func update_target_markers(
 		return
 	var distance_m: float = single_target_distance_px / max(pixels_per_meter, 1.0)
 	var marker := target_markers[0]
-	marker.text = "● %.2f м" % distance_m
+	_set_marker_text(marker, distance_m)
+	_place_marker(marker, target_x, target_line_y)
+	marker.add_theme_color_override("font_color", MARKER_COLOR_ACTIVE)
+
+func _set_marker_text(marker: Label, distance_m: float) -> void:
+	marker.text = "%.2f м" % distance_m
+
+func _place_marker(marker: Label, target_x: float, marker_line_y: float) -> void:
+	var text_size := marker.get_minimum_size()
 	marker.global_position = Vector2(
-		target_x + 34.0,
-		starting_ball_y - single_target_distance_px - 12.0
+		target_x + TARGET_MARKER_OFFSET_X,
+		marker_line_y - text_size.y * 0.5
 	)
-	marker.modulate = SiteColors.BLUE
 
 func _ensure_target_markers() -> void:
 	if target_markers.size() == TARGET_MARKER_COUNT:
@@ -147,9 +161,10 @@ func _ensure_target_markers() -> void:
 	for _i in range(TARGET_MARKER_COUNT):
 		var marker := Label.new()
 		marker.add_theme_font_size_override("font_size", TARGET_MARKER_FONT_SIZE)
-		marker.add_theme_color_override("font_color", SiteColors.TEXT)
-		var marker_font: Font = load("res://Assets/Fonts/Lora-SemiBold.ttf")
+		marker.add_theme_color_override("font_color", MARKER_COLOR_UPCOMING)
+		var marker_font: Font = load("res://Assets/Fonts/Lora-Regular.ttf")
 		marker.add_theme_font_override("font", marker_font)
+		marker.modulate = Color.WHITE
 		marker.visible = false
 		host.add_child(marker)
 		target_markers.append(marker)
