@@ -118,6 +118,11 @@ layout_mode = 2
 text = "СЛЕДУЮЩИЙ"
 script = ExtResource("6_nextlvl")
 
+[node name="RestartButton" type="Button" parent="UILayer/UI/TopBar"]
+visible = false
+layout_mode = 2
+text = "ЗАНОВО"
+
 [node name="BottomBar" type="HBoxContainer" parent="UILayer/UI"]
 layout_mode = 1
 anchors_preset = 12

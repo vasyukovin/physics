@@ -8,6 +8,7 @@ var forces: Array[float] = []
 var forces_confirmed: bool = false
 var auto_sequence_running: bool = false
 var hit_registered_this_throw: bool = false
+var hits_count: int = 0
 
 func reset_state() -> void:
 	current_throw_index = 0
@@ -15,6 +16,7 @@ func reset_state() -> void:
 	forces_confirmed = false
 	auto_sequence_running = false
 	hit_registered_this_throw = false
+	hits_count = 0
 
 func get_throw_count() -> int:
 	return THROW_COUNT
@@ -66,6 +68,10 @@ func mark_throw_started() -> void:
 
 func register_hit() -> void:
 	hit_registered_this_throw = true
+	hits_count += 1
+
+func get_hits_count() -> int:
+	return hits_count
 
 func was_hit_this_throw() -> bool:
 	return hit_registered_this_throw

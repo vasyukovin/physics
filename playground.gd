@@ -16,6 +16,7 @@ const BallScene = preload("res://Ball/ball.tscn")
 @onready var force_input: LineEdit = $UILayer/UI/BottomBar/ForceInput
 @onready var throw_button: Button = $UILayer/UI/BottomBar/ThrowButton
 @onready var next_level_button: Button = $UILayer/UI/TopBar/NextLevelButton
+@onready var restart_button: Button = $UILayer/UI/TopBar/RestartButton
 @onready var level_label: Label = $UILayer/UI/TopBar/LevelLabel
 @onready var level3_forces_panel: VBoxContainer = $UILayer/UI/Level3Forces
 @onready var force_input_1: LineEdit = $UILayer/UI/Level3Forces/ForceInput1
@@ -118,6 +119,7 @@ func _ready() -> void:
 	
 	throw_button.pressed.connect(_on_throw_button_pressed)
 	next_level_button.pressed.connect(_on_next_level_button_pressed)
+	restart_button.pressed.connect(_on_restart_button_pressed)
 	apply_forces_button.pressed.connect(_on_apply_level3_forces_pressed)
 	
 	force_input.text = "700"
@@ -131,6 +133,7 @@ func _ready() -> void:
 		force_input,
 		throw_button,
 		next_level_button,
+		restart_button,
 		level_label,
 		level3_forces_panel,
 		force_input_1,
@@ -329,6 +332,9 @@ func _check_peak_triggers(ball_center_y: float):
 		if target_ring_controller:
 			target_ring_controller.play_hit_fx()
 
+func _on_restart_button_pressed() -> void:
+	get_tree().reload_current_scene()
+
 func _on_next_level_button_pressed() -> void:
 	if throw_state_controller and throw_state_controller.is_throw_active():
 		return
@@ -432,7 +438,6 @@ func _run_level3_auto_sequence() -> void:
 				professor_dialogue_controller.set_series_silent(false)
 				await professor_dialogue_controller.on_input_error("missing_force_values")
 			return
-		var throw_number: int = level3_sequence_controller.get_current_throw_number()
 		level3_sequence_controller.mark_throw_started()
 		_refresh_target_visual()
 		_update_target_markers()
@@ -444,13 +449,7 @@ func _run_level3_auto_sequence() -> void:
 			return
 		if not level3_sequence_controller.was_hit_this_throw():
 			if professor_dialogue_controller:
-				var miss_outcome: ProfessorDialogueController.ThrowOutcome = (
-					professor_dialogue_controller.peek_pending_outcome()
-				)
 				professor_dialogue_controller.clear_pending_verdict()
-				professor_dialogue_controller.set_series_silent(false)
-				await professor_dialogue_controller.on_series_miss(throw_number, miss_outcome)
-			return
 		level3_sequence_controller.complete_current_throw()
 	
 	if _current_level() == 3 and level3_sequence_controller and level3_sequence_controller.is_finished():
@@ -460,9 +459,11 @@ func _run_level3_auto_sequence() -> void:
 		if professor_dialogue_controller:
 			professor_dialogue_controller.set_series_silent(false)
 			await professor_dialogue_controller.on_series_finished(
-				level3_sequence_controller.get_throw_count(),
+				level3_sequence_controller.get_hits_count(),
 				level3_sequence_controller.get_throw_count()
 			)
+		if level_ui_controller:
+			level_ui_controller.show_restart_button(true)
 
 func _start_throw_with_force(force_value: float) -> void:
 	triggers_fired.clear()  # Reset triggers for new throw

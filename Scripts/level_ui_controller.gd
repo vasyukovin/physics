@@ -14,6 +14,7 @@ var host: Node2D
 var force_input: LineEdit
 var throw_button: Button
 var next_level_button: Button
+var restart_button: Button
 var level_label: Label
 var level3_forces_panel: VBoxContainer
 var force_input_1: LineEdit
@@ -27,6 +28,7 @@ func setup(
 	target_force_input: LineEdit,
 	target_throw_button: Button,
 	target_next_level_button: Button,
+	target_restart_button: Button,
 	target_level_label: Label,
 	target_level3_forces_panel: VBoxContainer,
 	target_force_input_1: LineEdit,
@@ -38,6 +40,7 @@ func setup(
 	force_input = target_force_input
 	throw_button = target_throw_button
 	next_level_button = target_next_level_button
+	restart_button = target_restart_button
 	level_label = target_level_label
 	level3_forces_panel = target_level3_forces_panel
 	force_input_1 = target_force_input_1
@@ -48,6 +51,7 @@ func setup(
 func apply_level_state(level: int, total_levels: int) -> void:
 	level_label.text = "Уровень %d/%d" % [level, total_levels]
 	show_next_level_button(false)
+	show_restart_button(false)
 	
 	if level == 1:
 		force_input.visible = false
@@ -67,6 +71,10 @@ func show_next_level_button(visible: bool) -> void:
 	next_level_button.visible = visible
 	if next_level_button.has_method("set_attention_active"):
 		next_level_button.set_attention_active(visible)
+
+func show_restart_button(visible: bool) -> void:
+	if restart_button:
+		restart_button.visible = visible
 
 func set_throw_button_disabled(disabled: bool) -> void:
 	throw_button.disabled = disabled
