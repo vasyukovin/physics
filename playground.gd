@@ -25,9 +25,11 @@ const BallScene = preload("res://Ball/ball.tscn")
 @onready var player_sprite: Sprite2D = $Player/Sprite2D
 @onready var target_height_line: Sprite2D = $TargetHeightLine
 @onready var camera: Camera2D = $Camera2D
-@onready var professor_dialog_label: Label = $Professor/SpeechBubble/Margin/SpeechText
+@onready var professor_dialog_label: Label = $UILayer/UI/SpeechBubble/Margin/SpeechText
 @onready var ui_root: Control = $UILayer/UI
-@onready var speech_bubble: PanelContainer = $Professor/SpeechBubble
+@onready var speech_bubble: PanelContainer = $UILayer/UI/SpeechBubble
+
+const SPEECH_BUBBLE_ABOVE_HEAD_OFFSET := Vector2(0.0, -10.0)
 
 @export var hand_y_offset: float = 380.0
 @export var pixels_per_meter: float = 100.0  # Conversion factor: 100 pixels = 1 meter
@@ -205,6 +207,7 @@ func _physics_process(_delta):
 	if camera_follow_controller:
 		camera_follow_controller.update(_delta)
 	_update_force_outline_visual()
+	_update_speech_bubble_position()
 		
 func _on_throw_button_pressed():
 	if throw_state_controller and throw_state_controller.is_throw_active():
@@ -572,6 +575,23 @@ func _get_ball_radius_px() -> float:
 			return 0.5 * size.x * s.scale.x
 	
 	return 10.0
+
+
+func _get_speech_bubble_anchor_world() -> Vector2:
+	return _get_character_head_global_position(professor_node) + SPEECH_BUBBLE_ABOVE_HEAD_OFFSET
+
+
+func _world_to_ui_canvas(world_pos: Vector2) -> Vector2:
+	var viewport_size := get_viewport().get_visible_rect().size
+	return (world_pos - camera.global_position) * camera.zoom + viewport_size * 0.5
+
+
+func _update_speech_bubble_position() -> void:
+	var anchor_screen := _world_to_ui_canvas(_get_speech_bubble_anchor_world())
+	var bubble_size := speech_bubble.size
+	speech_bubble.position = (
+		anchor_screen - Vector2(bubble_size.x * 0.5, bubble_size.y)
+	).round()
 
 
 func _apply_site_theme() -> void:
