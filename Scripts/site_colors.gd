@@ -1,0 +1,16 @@
+class_name SiteColors
+
+const PRIMARY := Color("#f7a048")
+const PRIMARY_SHADOW := Color("#b87635")
+const PRIMARY_HOVER := Color("#e56a37")
+const PRIMARY_SHIMMER_LIGHT := Color("#ffc98a")
+const BACKGROUND := Color("#fff7ed")
+const TEXT := Color("#363636")
+const TEXT_MUTED := Color("#cfcfcf")
+const BLUE := Color("#2788ff")
+const CYAN := Color("#33c0ef")
+const GREEN := Color("#31aa1e")
+const BORDER_LIGHT := Color("#eacb8c")
+const DISABLED_BG := Color("#b7b7b7")
+const DISABLED_SHADOW := Color("#7a7a7a")
+const WHITE := Color("#ffffff")

@@ -26,6 +26,8 @@ const BallScene = preload("res://Ball/ball.tscn")
 @onready var target_height_line: Sprite2D = $TargetHeightLine
 @onready var camera: Camera2D = $Camera2D
 @onready var professor_dialog_label: Label = $Professor/SpeechBubble/Margin/SpeechText
+@onready var ui_root: Control = $UILayer/UI
+@onready var speech_bubble: PanelContainer = $Professor/SpeechBubble
 
 @export var hand_y_offset: float = 380.0
 @export var pixels_per_meter: float = 100.0  # Conversion factor: 100 pixels = 1 meter
@@ -41,10 +43,10 @@ const BallScene = preload("res://Ball/ball.tscn")
 @export var target_tolerance_px: float = 10.0  # Allowed center offset for a "hit"
 @export var target_ring_line_width_px: float = 3.0
 @export var target_ring_idle_alpha: float = 0.25
-@export var target_hit_color: Color = Color(0.2, 0.6, 1.0, 1.0)
+@export var target_hit_color: Color = SiteColors.GREEN
 @export var force_outline_width_px: float = 4.0
-@export var force_outline_red_base: Color = Color(1.0, 0.2, 0.2, 1.0)
-@export var force_outline_blue_base: Color = Color(0.2, 0.5, 1.0, 1.0)
+@export var force_outline_red_base: Color = SiteColors.PRIMARY
+@export var force_outline_blue_base: Color = SiteColors.BLUE
 @export var force_outline_blue_alpha: float = 0.9
 @export var force_outline_red_min_alpha: float = 0.0
 @export var force_outline_softness_px: float = 6.0
@@ -104,6 +106,8 @@ func _current_level() -> int:
 	return 1
 
 func _ready() -> void:
+	_apply_site_theme()
+
 	var default_ball_position := ball.global_position
 	starting_ball_y = default_ball_position.y
 	var hand_position_y: float = default_ball_position.y + hand_y_offset 
@@ -568,3 +572,20 @@ func _get_ball_radius_px() -> float:
 			return 0.5 * size.x * s.scale.x
 	
 	return 10.0
+
+
+func _apply_site_theme() -> void:
+	var theme: Theme = load("res://Theme/site_theme.tres")
+	if theme:
+		ui_root.theme = theme
+	else:
+		ui_root.theme = SiteThemeBuilder.build()
+	speech_bubble.add_theme_stylebox_override("panel", SiteThemeBuilder.build_professor_bubble_style())
+
+	var font_italic: Font = load("res://Assets/Fonts/Lora-Italic.ttf")
+	professor_dialog_label.add_theme_font_override("font", font_italic)
+	professor_dialog_label.add_theme_color_override("font_color", SiteColors.TEXT)
+
+	var font_semibold: Font = load("res://Assets/Fonts/Lora-SemiBold.ttf")
+	level_label.add_theme_font_override("font", font_semibold)
+	level_label.add_theme_color_override("font_color", SiteColors.TEXT)

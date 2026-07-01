@@ -8,8 +8,8 @@ var gravity_label: Label
 var impulse_label: Label
 var preview_ball_scene: PackedScene
 var pixels_per_meter: float = 100.0
-var gravity_color: Color = Color(0.2, 0.5, 1.0, 1.0)
-var impulse_color: Color = Color(1.0, 0.2, 0.2, 1.0)
+var gravity_color: Color = SiteColors.BLUE
+var impulse_color: Color = SiteColors.PRIMARY
 
 func setup(
 	target_legend_panel: PanelContainer,

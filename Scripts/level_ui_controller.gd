@@ -118,11 +118,11 @@ func update_target_markers(
 			marker.text = "● %.2f м" % distance_m
 			marker.global_position = Vector2(target_x + 34.0, starting_ball_y - distance_px - 12.0)
 			if i < current_throw_index:
-				marker.modulate = Color(0.3, 1.0, 0.3, 0.95)
+				marker.modulate = SiteColors.GREEN
 			elif i == current_throw_index:
-				marker.modulate = Color(0.2, 0.7, 1.0, 1.0)
+				marker.modulate = SiteColors.BLUE
 			else:
-				marker.modulate = Color(1.0, 1.0, 1.0, 0.55)
+				marker.modulate = Color(SiteColors.TEXT, 0.45)
 		return
 	
 	for i in range(target_markers.size()):
@@ -136,7 +136,7 @@ func update_target_markers(
 		target_x + 34.0,
 		starting_ball_y - single_target_distance_px - 12.0
 	)
-	marker.modulate = Color(0.2, 0.7, 1.0, 1.0)
+	marker.modulate = SiteColors.BLUE
 
 func _ensure_target_markers() -> void:
 	if target_markers.size() == TARGET_MARKER_COUNT:
@@ -147,6 +147,9 @@ func _ensure_target_markers() -> void:
 	for _i in range(TARGET_MARKER_COUNT):
 		var marker := Label.new()
 		marker.add_theme_font_size_override("font_size", TARGET_MARKER_FONT_SIZE)
+		marker.add_theme_color_override("font_color", SiteColors.TEXT)
+		var marker_font: Font = load("res://Assets/Fonts/Lora-SemiBold.ttf")
+		marker.add_theme_font_override("font", marker_font)
 		marker.visible = false
 		host.add_child(marker)
 		target_markers.append(marker)

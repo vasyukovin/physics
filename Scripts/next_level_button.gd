@@ -1,8 +1,8 @@
 extends Button
 
 @export var shimmer_speed_sec: float = 0.55
-@export var shimmer_color_a: Color = Color(0.72, 1.0, 0.58, 1.0)
-@export var shimmer_color_b: Color = Color(1.0, 0.9, 0.38, 1.0)
+@export var shimmer_color_a: Color = SiteColors.PRIMARY
+@export var shimmer_color_b: Color = SiteColors.PRIMARY_SHIMMER_LIGHT
 
 var _shimmer_tween: Tween
 var _rest_modulate: Color = Color.WHITE
